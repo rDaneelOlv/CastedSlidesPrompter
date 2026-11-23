@@ -1,0 +1,1868 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Écran Casté — Diapositives de la présentation</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=JetBrains+Mono:wght@600;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #000000;
+      color: #F8FAFC;
+      font-family: 'Inter', system-ui, sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    #slideImage {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      transition: opacity 0.16s ease-out;
+    }
+
+    /* Styles de lisibilité cinéma/diffusion pour les sous-titres */
+    .subtitle-text {
+      line-height: 1.32;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      text-wrap: balance;
+      word-break: break-word;
+      transition: color 0.15s ease, font-size 0.12s ease;
+    }
+
+    /* Encapsulation des mots pour éviter toute coupure orpheline lors de l'écriture caractère par caractère */
+    .word-punct-group {
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    /* Animation et coloration caractère par caractère identiques à prompteur.html */
+    .sub-char {
+      color: var(--sub-read-color, #FFFFFF);
+      transition: color 0.06s linear, text-shadow 0.08s linear;
+    }
+
+    .sub-char.unread {
+      display: none;
+    }
+
+    .sub-char.read {
+      color: var(--sub-read-color, #FFFFFF);
+    }
+
+    .sub-char.trail {
+      color: #38BDF8;
+    }
+
+    .sub-char.active {
+      color: #FACC15;
+      text-shadow: 0 0 14px rgba(250, 204, 21, 0.65);
+    }
+
+    #subtitleOverlayBox {
+      transition: opacity 0.18s ease, background-color 0.15s ease, bottom 0.08s ease-out;
+    }
+
+    /* Mini overlay horloge Global + point vert/rouge */
+    #miniTimerOverlay {
+      opacity: 0.24;
+      background-color: rgba(2, 6, 23, 0.55);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      transition: opacity 0.75s ease, background-color 0.5s ease, border-color 0.5s ease, transform 0.35s ease;
+    }
+
+    /* Toutes les 10 secondes : diminution de la transparence pour rendre le timer bien visible */
+    #miniTimerOverlay.is-highlighted {
+      opacity: 0.96;
+      background-color: rgba(2, 6, 23, 0.92);
+      border-color: rgba(226, 232, 240, 0.45);
+      box-shadow: 0 10px 30px -6px rgba(0, 0, 0, 0.85);
+      transition: opacity 0.35s ease, background-color 0.35s ease, border-color 0.35s ease, transform 0.35s ease;
+    }
+
+    /* Barre d'outils discrète au mouvement de la souris */
+    #hudOverlay {
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+
+    #hudOverlay.hud-hidden {
+      opacity: 0;
+      transform: translate(-50%, -14px);
+      pointer-events: none;
+    }
+
+    /* Panneaux de configuration (placés en haut de la fenêtre) */
+    .config-modal {
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .config-modal.modal-hidden {
+      opacity: 0;
+      transform: translate(-50%, -12px) scale(0.98);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="relative w-screen h-screen bg-black overflow-hidden">
+
+  <!-- ===================================================================== -->
+  <!-- CONTENEUR PRINCIPAL : SCÈNE SLIDE + BANDEAU SOUS-TITRES SOUS LA SLIDE -->
+  <!-- ===================================================================== -->
+  <div id="stageWrapper" class="w-full h-full flex flex-col items-center justify-center overflow-hidden">
+
+    <!-- Zone supérieure / centrale : Diapositive active -->
+    <div id="slideStage" class="relative flex-1 w-full min-h-0 flex items-center justify-center overflow-hidden">
+
+      <!-- Image de la diapositive active -->
+      <img
+        id="slideImage"
+        src=""
+        alt="Diapositive active"
+        class="hidden"
+      />
+
+      <!-- Écran d'attente / aperçu propre si aucune image n'est encore trouvée dans slides/ -->
+      <div id="fallbackCard" class="max-w-3xl mx-6 p-6 sm:p-10 rounded-3xl bg-slate-900/90 border border-slate-800 text-center shadow-2xl max-h-[90%] overflow-y-auto">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-sky-500/15 text-sky-300 border border-sky-500/30 mb-4">
+          <span id="fallbackSlideBadge">SLIDE 1 / 11</span>
+        </div>
+        <p id="fallbackPartText" class="text-xs sm:text-sm uppercase tracking-wider text-emerald-400 font-bold mb-2">
+          PARTIE 1 : PRÉSENTATION
+        </p>
+        <h1 id="fallbackTitleText" class="text-2xl sm:text-4xl font-extrabold text-white tracking-tight mb-5">
+          Slide 1 : Première diapositive
+        </h1>
+        <div class="bg-slate-950/90 border border-slate-800 rounded-2xl p-4 sm:p-5 text-left text-xs sm:text-sm text-slate-300 space-y-2">
+          <p class="font-semibold text-slate-100">Aucune image détectée pour cette diapositive dans <code class="text-sky-400">slides/</code>.</p>
+          <p class="text-slate-400">
+            Placez vos exports PowerPoint / Keynote / Canva dans le sous-dossier <code class="text-sky-300">slides/</code> sous l'un des formats suivants :
+          </p>
+          <ul class="font-mono text-xs text-amber-300/95 space-y-1 pl-4 list-disc">
+            <li><code>slides/Slides_1.png</code> ou <code>slides/Slides_01.png</code></li>
+            <li><code>slides/Page_1.png</code> ou <code>slides/Page_01.png</code></li>
+            <li><code>slides/slide-01.png</code> ou <code>slides/Diapositive1.PNG</code></li>
+          </ul>
+          <div class="pt-2">
+            <label
+              for="folderPickerInput"
+              class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs sm:text-sm cursor-pointer transition"
+            >
+              <span>Ou sélectionner directement le dossier slides/</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- ZONE SOUS-TITRES MODE 2 : SOUS LA SLIDE (Bandeau dédié en bas)      -->
+    <!-- =================================================================== -->
+    <div
+      id="subtitleBelowBar"
+      class="hidden w-full shrink-0 bg-slate-950 border-t border-slate-800/90 px-6 sm:px-12 py-3.5 sm:py-4 flex items-center justify-center text-center z-20"
+      aria-live="polite"
+    >
+      <p
+        id="subtitleBelowText"
+        class="subtitle-text max-w-5xl"
+        style="color: #FFFFFF; --sub-read-color: #FFFFFF; font-size: 30px;"
+      ></p>
+    </div>
+
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- ZONE SOUS-TITRES MODE 1 : OVERLAY EN TRANSPARENCE SUR LA SLIDE        -->
+  <!-- ===================================================================== -->
+  <div
+    id="subtitleOverlayBox"
+    class="hidden fixed left-1/2 -translate-x-1/2 z-20 max-w-[82vw] px-6 py-3 rounded-2xl text-center pointer-events-none"
+    style="bottom: 5%;"
+    aria-live="polite"
+  >
+    <p
+      id="subtitleOverlayText"
+      class="subtitle-text"
+      style="color: #FFFFFF; --sub-read-color: #FFFFFF; font-size: 30px;"
+    ></p>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MINI OVERLAY TRANSPARENT : POINT VERT/ROUGE + HORLOGE GLOBALE         -->
+  <!-- ===================================================================== -->
+  <div
+    id="miniTimerOverlay"
+    class="fixed bottom-4 right-4 z-30 px-3 py-1.5 rounded-xl backdrop-blur-sm flex items-center gap-2.5 pointer-events-none"
+    aria-label="Chronomètre global"
+  >
+    <span
+      id="miniSyncDot"
+      class="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0 transition-colors duration-300"
+      title="État de synchronisation"
+    ></span>
+
+    <div class="flex items-baseline gap-1 font-mono leading-none">
+      <span
+        id="miniGlobalTimer"
+        class="text-lg sm:text-xl font-extrabold tracking-tight"
+        style="color: #F8FAFC;"
+      >00:00</span>
+      <span
+        id="miniGlobalTotal"
+        class="text-xs font-semibold text-slate-400"
+      >/ 13:37</span>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- PANNEAU DE CONFIGURATION DES SOUS-TITRES (EN HAUT DE LA FENÊTRE)      -->
+  <!-- ===================================================================== -->
+  <div
+    id="subtitleConfigModal"
+    class="config-modal modal-hidden fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[94vw] max-w-lg max-h-[86vh] overflow-y-auto rounded-2xl bg-slate-950/95 border border-slate-700/90 backdrop-blur-md shadow-2xl p-4 sm:p-5 text-sm text-slate-200"
+  >
+    <div class="flex items-center justify-between pb-2.5 mb-3.5 border-b border-slate-800">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h6m-8 8h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        <h2 class="font-bold text-white text-base">Configuration des sous-titres</h2>
+      </div>
+      <button
+        id="btnCloseSubConfig"
+        type="button"
+        class="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+        aria-label="Fermer"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="space-y-3">
+      <!-- 1. Activer / Désactiver les sous-titres -->
+      <div class="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-xl px-3.5 py-2.5">
+        <div>
+          <p class="font-semibold text-white">Afficher les sous-titres</p>
+          <p class="text-xs text-slate-400">Écriture caractère par caractère synchronisée (Touche S)</p>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input id="subCfgEnabled" type="checkbox" checked class="sr-only peer" />
+          <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
+        </label>
+      </div>
+
+      <!-- 2. Positionnement : Overlay en transparence ou Sous la slide + Position verticale & Opacité -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 space-y-3">
+        <p class="font-semibold text-white">Mode d'affichage</p>
+
+        <div class="grid grid-cols-2 gap-2">
+          <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-700/80 bg-slate-950/60 hover:border-sky-500/50 cursor-pointer transition">
+            <input type="radio" name="subCfgMode" value="overlay" checked class="accent-sky-400 w-4 h-4 cursor-pointer" />
+            <div>
+              <span class="block font-semibold text-xs text-white">Overlay transparent</span>
+              <span class="block text-[11px] text-slate-400">Par-dessus la slide</span>
+            </div>
+          </label>
+
+          <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-700/80 bg-slate-950/60 hover:border-sky-500/50 cursor-pointer transition">
+            <input type="radio" name="subCfgMode" value="below" class="accent-sky-400 w-4 h-4 cursor-pointer" />
+            <div>
+              <span class="block font-semibold text-xs text-white">Sous la slide</span>
+              <span class="block text-[11px] text-slate-400">Bandeau dédié en bas</span>
+            </div>
+          </label>
+        </div>
+
+        <!-- Réglages spécifiques au mode Overlay -->
+        <div id="subOverlayControlsGroup" class="pt-2.5 border-t border-slate-800/80 space-y-3 transition-opacity">
+          <!-- Slider Position en hauteur -->
+          <div class="space-y-1">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-slate-300 font-medium">Position en hauteur (Overlay)</span>
+              <span id="subCfgHeightLabel" class="font-mono font-bold text-sky-300">5% (Bas)</span>
+            </div>
+            <input
+              id="subCfgHeightRange"
+              type="range"
+              min="2"
+              max="85"
+              step="1"
+              value="5"
+              class="w-full accent-sky-400 cursor-pointer"
+            />
+          </div>
+
+          <!-- Slider Opacité du fond -->
+          <div class="space-y-1">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-slate-300 font-medium">Opacité du fond (Overlay)</span>
+              <span id="subCfgBgOpacityLabel" class="font-mono font-bold text-sky-300">55%</span>
+            </div>
+            <input
+              id="subCfgBgOpacity"
+              type="range"
+              min="0"
+              max="90"
+              step="5"
+              value="55"
+              class="w-full accent-sky-400 cursor-pointer"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Décalage temporel (retard de 0,0 à 2,0 secondes par rapport au prompteur) -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 space-y-2">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="font-semibold text-white">Décalage temporel (retard)</p>
+            <p class="text-[11px] text-slate-400">Affiche « … » au début de la slide jusqu'à l'offset</p>
+          </div>
+          <span id="subCfgDelayLabel" class="font-mono font-bold text-xs px-2 py-0.5 rounded-md bg-amber-400/15 text-amber-300 border border-amber-400/30">+0,5 s</span>
+        </div>
+
+        <input
+          id="subCfgDelayRange"
+          type="range"
+          min="0"
+          max="2"
+          step="0.1"
+          value="0.5"
+          class="w-full accent-amber-400 cursor-pointer"
+        />
+
+        <div class="flex items-center justify-between gap-1 pt-0.5">
+          <button type="button" data-delay-preset="0" class="delay-preset-btn flex-1 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 font-mono text-[11px] font-semibold text-slate-300 transition cursor-pointer">0 s</button>
+          <button type="button" data-delay-preset="0.5" class="delay-preset-btn flex-1 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 font-mono text-[11px] font-semibold text-slate-300 transition cursor-pointer">0,5 s</button>
+          <button type="button" data-delay-preset="1.0" class="delay-preset-btn flex-1 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 font-mono text-[11px] font-semibold text-slate-300 transition cursor-pointer">1,0 s</button>
+          <button type="button" data-delay-preset="1.5" class="delay-preset-btn flex-1 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 font-mono text-[11px] font-semibold text-slate-300 transition cursor-pointer">1,5 s</button>
+          <button type="button" data-delay-preset="2.0" class="delay-preset-btn flex-1 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 font-mono text-[11px] font-semibold text-slate-300 transition cursor-pointer">2,0 s</button>
+        </div>
+      </div>
+
+      <!-- 4. Couleur & Taille des sous-titres -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <!-- Couleur -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <p class="font-semibold text-xs text-white">Couleur</p>
+            <span id="subCfgColorHexLabel" class="font-mono text-[11px] text-slate-400">#FFFFFF</span>
+          </div>
+
+          <div class="flex items-center justify-between gap-1.5">
+            <div class="flex items-center gap-1.5">
+              <button type="button" data-sub-color="#FFFFFF" title="Blanc pur" class="sub-color-swatch w-6 h-6 rounded-full border-2 border-white cursor-pointer transition hover:scale-110" style="background-color: #FFFFFF;"></button>
+              <button type="button" data-sub-color="#FACC15" title="Jaune cinéma" class="sub-color-swatch w-6 h-6 rounded-full border-2 border-transparent cursor-pointer transition hover:scale-110" style="background-color: #FACC15;"></button>
+              <button type="button" data-sub-color="#38BDF8" title="Cyan lumineux" class="sub-color-swatch w-6 h-6 rounded-full border-2 border-transparent cursor-pointer transition hover:scale-110" style="background-color: #38BDF8;"></button>
+              <button type="button" data-sub-color="#34D399" title="Vert émeraude" class="sub-color-swatch w-6 h-6 rounded-full border-2 border-transparent cursor-pointer transition hover:scale-110" style="background-color: #34D399;"></button>
+              <button type="button" data-sub-color="#0F172A" title="Noir profond" class="sub-color-swatch w-6 h-6 rounded-full border-2 border-slate-600 cursor-pointer transition hover:scale-110" style="background-color: #0F172A;"></button>
+            </div>
+
+            <label class="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 cursor-pointer text-[11px] font-medium" title="Couleur personnalisée">
+              <input id="subCfgCustomColor" type="color" value="#FFFFFF" class="w-4 h-4 bg-transparent border-0 cursor-pointer p-0" />
+            </label>
+          </div>
+        </div>
+
+        <!-- Taille -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <p class="font-semibold text-xs text-white">Taille</p>
+            <div class="flex items-center gap-1">
+              <button
+                id="btnSubFontDec"
+                type="button"
+                class="w-6 h-6 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px] transition cursor-pointer"
+              >A-</button>
+              <span id="subCfgFontSizeLabel" class="font-mono font-bold text-xs text-sky-300 min-w-[38px] text-center">30px</span>
+              <button
+                id="btnSubFontInc"
+                type="button"
+                class="w-6 h-6 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px] transition cursor-pointer"
+              >A+</button>
+            </div>
+          </div>
+          <input
+            id="subCfgFontSizeRange"
+            type="range"
+            min="18"
+            max="56"
+            step="2"
+            value="30"
+            class="w-full accent-sky-400 cursor-pointer"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- PANNEAU DE CONFIGURATION DE L'OVERLAY HORLOGE (EN HAUT DE LA FENÊTRE) -->
+  <!-- ===================================================================== -->
+  <div
+    id="configModal"
+    class="config-modal modal-hidden fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[92vw] max-w-md max-h-[86vh] overflow-y-auto rounded-2xl bg-slate-950/95 border border-slate-700/90 backdrop-blur-md shadow-2xl p-5 text-sm text-slate-200"
+  >
+    <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-800">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <h2 class="font-bold text-white text-base">Configuration du mini compteur</h2>
+      </div>
+      <button
+        id="btnCloseConfig"
+        type="button"
+        class="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+        aria-label="Fermer"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="space-y-4">
+      <!-- 1. Activer / Désactiver l'affichage de l'overlay -->
+      <div class="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-xl px-3.5 py-2.5">
+        <div>
+          <p class="font-semibold text-white">Afficher le mini compteur</p>
+          <p class="text-xs text-slate-400">Point synchro + horloge globale sur les slides</p>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input id="cfgEnabled" type="checkbox" checked class="sr-only peer" />
+          <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+        </label>
+      </div>
+
+      <!-- 2. Quand afficher l'overlay : Depuis le début ou X minutes avant la fin -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+        <p class="font-semibold text-white">Moment d'affichage</p>
+
+        <label class="flex items-center gap-2.5 cursor-pointer">
+          <input type="radio" name="cfgDisplayMode" value="always" checked class="accent-sky-400 w-4 h-4 cursor-pointer" />
+          <span>Depuis le début de la présentation</span>
+        </label>
+
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <label class="flex items-center gap-2.5 cursor-pointer">
+            <input type="radio" name="cfgDisplayMode" value="before_end" class="accent-sky-400 w-4 h-4 cursor-pointer" />
+            <span>Uniquement avant la fin :</span>
+          </label>
+
+          <div class="flex items-center gap-1.5">
+            <button
+              id="btnDecMinutes"
+              type="button"
+              class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold transition cursor-pointer"
+            >-</button>
+            <input
+              id="cfgMinutesBeforeEnd"
+              type="number"
+              min="0.5"
+              max="60"
+              step="0.5"
+              value="3"
+              class="w-16 text-center font-mono font-bold bg-slate-950 border border-slate-700 rounded-lg py-1 text-sky-300 focus:outline-none focus:border-sky-500"
+            />
+            <button
+              id="btnIncMinutes"
+              type="button"
+              class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold transition cursor-pointer"
+            >+</button>
+            <span class="text-xs text-slate-400">min</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Couleur du compteur -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <p class="font-semibold text-white">Couleur du compteur</p>
+          <span id="cfgColorHexLabel" class="font-mono text-xs text-slate-400">#F8FAFC</span>
+        </div>
+
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <button type="button" data-color="#F8FAFC" title="Blanc pur" class="color-swatch w-7 h-7 rounded-full border-2 border-white/60 cursor-pointer transition hover:scale-110" style="background-color: #F8FAFC;"></button>
+            <button type="button" data-color="#38BDF8" title="Cyan" class="color-swatch w-7 h-7 rounded-full border-2 border-transparent cursor-pointer transition hover:scale-110" style="background-color: #38BDF8;"></button>
+            <button type="button" data-color="#34D399" title="Vert émeraude" class="color-swatch w-7 h-7 rounded-full border-2 border-transparent cursor-pointer transition hover:scale-110" style="background-color: #34D399;"></button>
+            <button type="button" data-color="#FACC15" title="Or / Ambre" class="color-swatch w-7 h-7 rounded-full border-2 border-transparent cursor-pointer transition hover:scale-110" style="background-color: #FACC15;"></button>
+            <button type="button" data-color="#FB7185" title="Corail" class="color-swatch w-7 h-7 rounded-full border-2 border-transparent cursor-pointer transition hover:scale-110" style="background-color: #FB7185;"></button>
+          </div>
+
+          <label class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 cursor-pointer text-xs font-medium">
+            <span>Libre</span>
+            <input id="cfgCustomColor" type="color" value="#F8FAFC" class="w-5 h-5 bg-transparent border-0 cursor-pointer p-0" />
+          </label>
+        </div>
+      </div>
+
+      <!-- 4. Position & Test visuel -->
+      <div class="flex items-center justify-between gap-2 pt-1">
+        <select
+          id="cfgPosition"
+          class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200 focus:outline-none focus:border-sky-500 cursor-pointer"
+        >
+          <option value="bottom-right">Position : Bas droite</option>
+          <option value="bottom-left">Position : Bas gauche</option>
+          <option value="top-right">Position : Haut droite</option>
+          <option value="top-left">Position : Haut gauche</option>
+        </select>
+
+        <button
+          id="btnTestPulse"
+          type="button"
+          class="px-3 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-sky-300 text-xs font-bold transition cursor-pointer"
+        >
+          Tester le flash 10s
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- BARRE DE CONTRÔLE DISCRÈTE (UNIQUEMENT AU MOUVEMENT DE LA SOURIS)     -->
+  <!-- ===================================================================== -->
+  <div id="hudOverlay" class="fixed top-5 left-1/2 -translate-x-1/2 z-40 w-[75vw] flex flex-wrap items-center justify-between gap-2 sm:gap-2.5 px-4 py-2 rounded-2xl bg-slate-950/90 border border-slate-800 backdrop-blur-md shadow-2xl text-xs sm:text-sm">
+    <!-- Navigation manuelle -->
+    <button
+      id="btnHudPrev"
+      type="button"
+      title="Slide précédente (←)"
+      class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+      </svg>
+    </button>
+
+    <span id="hudSlideCounter" class="font-mono font-bold text-sky-300 px-1.5 whitespace-nowrap">
+      Slide 1 / 11
+    </span>
+
+    <button
+      id="btnHudNext"
+      type="button"
+      title="Slide suivante (Espace ou →)"
+      class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+      </svg>
+    </button>
+
+    <!-- Sélection manuelle du dossier slides/ -->
+    <label
+      for="folderPickerInput"
+      title="Sélectionner le dossier contenant les images des slides"
+      class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer transition whitespace-nowrap"
+    >
+      Dossier slides/
+    </label>
+    <input id="folderPickerInput" type="file" webkitdirectory directory multiple accept="image/*" class="hidden" />
+
+    <!-- Bouton Configurer les sous-titres -->
+    <button
+      id="btnToggleSubConfig"
+      type="button"
+      title="Configurer les sous-titres synchronisés (Touche S pour activer/masquer)"
+      class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap"
+    >
+      <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h6m-8 8h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+      <span>Sous-titres</span>
+    </button>
+
+    <!-- Bouton Configurer l'overlay horloge -->
+    <button
+      id="btnToggleConfig"
+      type="button"
+      title="Configurer l'affichage et la couleur du compteur (Touche C)"
+      class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap"
+    >
+      <svg class="w-4 h-4 text-amber-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+      <span>Compteur</span>
+    </button>
+
+    <!-- Plein écran -->
+    <button
+      id="btnFullscreen"
+      type="button"
+      title="Basculer en plein écran (Touche F ou double-clic)"
+      class="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold transition cursor-pointer whitespace-nowrap"
+    >
+      Plein écran (F)
+    </button>
+  </div>
+
+  <script>
+    const SYNC_CHANNEL_NAME = 'prompter_sync_v1';
+    const STORAGE_KEY_SYNC = 'prompter_sync_state_v1';
+    const STORAGE_KEY_TIMER_CFG = 'prompter_mini_timer_cfg_v1';
+    const STORAGE_KEY_SUBTITLES_CFG = 'prompter_subtitles_cfg_v1';
+
+    const DEFAULT_TITLES = [
+      { part: "PARTIE 1 : INTRODUCTION (1 minute)", title: "Slide 1 : NAVIGUER DANS L'INCERTITUDE" },
+      { part: "PARTIE 2 : FONDEMENTS (2 minutes)", title: "Slide 2 :  L'ÉQUATION DU RISQUE ET SES LEVIER" },
+      { part: "PARTIE 3 : GOUVERNANCE (4 minutes)", title: "Slide 3 : LE PROCESSUS DE TOLÉRANCE AUX RISQUES" },
+      { part: "PARTIE 4 : CULTURE (5 minutes)", title: "Slide 4 :  & LA CULTURE DU RISQUE COMME LEVIER STRATÉGIQUE" },
+      { part: "PARTIE 5 : CADRE DU PILOTAGE (6 minutes)", title: "Slide 5 : LE RÉFÉRENTIEL COSO 2 ET L'APPROCHE INTÉGRÉE" }
+    ];
+
+    // Configuration utilisateur persistante du mini overlay horloge
+    const timerConfig = {
+      enabled: true,
+      displayMode: 'always', // 'always' | 'before_end'
+      minutesBeforeEnd: 3,
+      counterColor: '#F8FAFC',
+      position: 'bottom-right' // 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
+    };
+
+    // Configuration utilisateur persistante des sous-titres synchronisés
+    const subtitleConfig = {
+      enabled: true,
+      displayMode: 'overlay', // 'overlay' | 'below'
+      textColor: '#FFFFFF',
+      fontSize: 30,
+      bgOpacity: 55,          // 0..90 (%) pour le mode overlay transparent
+      overlayBottomPct: 5,    // 2..85 (%) position verticale en overlay
+      delaySeconds: 0.5       // 0.0..2.0 (s) retard d'affichage par rapport au prompteur
+    };
+
+    const state = {
+      slideIndex: 0,
+      totalSlides: 11,
+      slideTitle: DEFAULT_TITLES[0].title,
+      slidePart: DEFAULT_TITLES[0].part,
+      // Horloge globale et horloge locale de la slide synchronisées avec prompteur.html
+      globalElapsed: 0,
+      slideElapsed: 0,
+      totalSeconds: 1175,
+      isRunning: false,
+      lastFrameTime: null,
+      // État de synchronisation (point vert / rouge)
+      isSynced: false,
+      lastSyncReceivedAt: 0,
+      // Timeline complète des sous-titres de la slide active (reçue de prompteur.html)
+      subtitleCues: [],
+      renderedCueIndex: -99,
+      renderedCueText: '',
+      renderedCueSegments: [],
+      fallbackSubtitleText: '',
+      // Animation de visibilité toutes les 10 secondes
+      lastPulseBucket: -1,
+      pulseUntil: 0,
+      // Ressources images & UI
+      localFolderUrls: [],
+      resolvedUrlCache: {},
+      hudTimer: null,
+      isConfigOpen: false,
+      isSubConfigOpen: false
+    };
+
+    const dom = {
+      stageWrapper: document.getElementById('stageWrapper'),
+      slideStage: document.getElementById('slideStage'),
+      slideImage: document.getElementById('slideImage'),
+      fallbackCard: document.getElementById('fallbackCard'),
+      fallbackSlideBadge: document.getElementById('fallbackSlideBadge'),
+      fallbackPartText: document.getElementById('fallbackPartText'),
+      fallbackTitleText: document.getElementById('fallbackTitleText'),
+      // Sous-titres (Overlay & Sous la slide)
+      subtitleOverlayBox: document.getElementById('subtitleOverlayBox'),
+      subtitleOverlayText: document.getElementById('subtitleOverlayText'),
+      subtitleBelowBar: document.getElementById('subtitleBelowBar'),
+      subtitleBelowText: document.getElementById('subtitleBelowText'),
+      // Panneau configuration sous-titres
+      subtitleConfigModal: document.getElementById('subtitleConfigModal'),
+      btnToggleSubConfig: document.getElementById('btnToggleSubConfig'),
+      btnCloseSubConfig: document.getElementById('btnCloseSubConfig'),
+      subCfgEnabled: document.getElementById('subCfgEnabled'),
+      subOverlayControlsGroup: document.getElementById('subOverlayControlsGroup'),
+      subCfgHeightRange: document.getElementById('subCfgHeightRange'),
+      subCfgHeightLabel: document.getElementById('subCfgHeightLabel'),
+      subCfgBgOpacity: document.getElementById('subCfgBgOpacity'),
+      subCfgBgOpacityLabel: document.getElementById('subCfgBgOpacityLabel'),
+      subCfgDelayRange: document.getElementById('subCfgDelayRange'),
+      subCfgDelayLabel: document.getElementById('subCfgDelayLabel'),
+      subCfgColorHexLabel: document.getElementById('subCfgColorHexLabel'),
+      subCfgCustomColor: document.getElementById('subCfgCustomColor'),
+      btnSubFontDec: document.getElementById('btnSubFontDec'),
+      btnSubFontInc: document.getElementById('btnSubFontInc'),
+      subCfgFontSizeLabel: document.getElementById('subCfgFontSizeLabel'),
+      subCfgFontSizeRange: document.getElementById('subCfgFontSizeRange'),
+      // Mini overlay horloge
+      miniTimerOverlay: document.getElementById('miniTimerOverlay'),
+      miniSyncDot: document.getElementById('miniSyncDot'),
+      miniGlobalTimer: document.getElementById('miniGlobalTimer'),
+      miniGlobalTotal: document.getElementById('miniGlobalTotal'),
+      // Panneau configuration compteur
+      configModal: document.getElementById('configModal'),
+      btnToggleConfig: document.getElementById('btnToggleConfig'),
+      btnCloseConfig: document.getElementById('btnCloseConfig'),
+      cfgEnabled: document.getElementById('cfgEnabled'),
+      cfgMinutesBeforeEnd: document.getElementById('cfgMinutesBeforeEnd'),
+      btnDecMinutes: document.getElementById('btnDecMinutes'),
+      btnIncMinutes: document.getElementById('btnIncMinutes'),
+      cfgColorHexLabel: document.getElementById('cfgColorHexLabel'),
+      cfgCustomColor: document.getElementById('cfgCustomColor'),
+      cfgPosition: document.getElementById('cfgPosition'),
+      btnTestPulse: document.getElementById('btnTestPulse'),
+      // Barre HUD
+      hudOverlay: document.getElementById('hudOverlay'),
+      hudSlideCounter: document.getElementById('hudSlideCounter'),
+      btnHudPrev: document.getElementById('btnHudPrev'),
+      btnHudNext: document.getElementById('btnHudNext'),
+      folderPickerInput: document.getElementById('folderPickerInput'),
+      btnFullscreen: document.getElementById('btnFullscreen')
+    };
+
+    function formatMMSS(totalSeconds) {
+      const clamped = Math.max(0, Math.floor(totalSeconds));
+      const mins = Math.floor(clamped / 60);
+      const secs = clamped % 60;
+      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    /**
+     * =========================================================================
+     * RENDU CARACTÈRE PAR CARACTÈRE DES SOUS-TITRES (IDENTIQUE À prompteur.html)
+     * =========================================================================
+     */
+    function getTargetSubtitleContainer() {
+      if (subtitleConfig.displayMode === 'below') {
+        dom.subtitleOverlayBox.classList.add('hidden');
+        dom.subtitleBelowBar.classList.remove('hidden');
+        return dom.subtitleBelowText;
+      } else {
+        dom.subtitleBelowBar.classList.add('hidden');
+        return dom.subtitleOverlayText;
+      }
+    }
+
+    function showSubtitleBox(hasContent) {
+      if (!subtitleConfig.enabled) {
+        dom.subtitleOverlayBox.classList.add('hidden');
+        dom.subtitleBelowBar.classList.add('hidden');
+        return;
+      }
+
+      if (subtitleConfig.displayMode === 'below') {
+        dom.subtitleOverlayBox.classList.add('hidden');
+        dom.subtitleBelowBar.classList.remove('hidden');
+        dom.subtitleBelowText.style.opacity = hasContent ? '1' : '0';
+      } else {
+        dom.subtitleBelowBar.classList.add('hidden');
+        if (hasContent) {
+          dom.subtitleOverlayBox.classList.remove('hidden');
+        } else {
+          dom.subtitleOverlayBox.classList.add('hidden');
+        }
+      }
+    }
+
+    function buildDomForSubtitleCue(cue, cueIdx) {
+      const targetEl = getTargetSubtitleContainer();
+      targetEl.innerHTML = '';
+      state.renderedCueIndex = cueIdx;
+      state.renderedCueText = cue ? (cue.text || '') : '';
+      state.renderedCueSegments = [];
+
+      if (!cue || cue.isPauseBlock) return;
+
+      const rawSegs = (Array.isArray(cue.segments) && cue.segments.length > 0)
+        ? cue.segments
+        : [{
+            type: 'text',
+            text: cue.text || '',
+            start: cue.speechStart || 0,
+            end: Math.max((cue.speechStart || 0) + 0.1, cue.speechEnd || 1)
+          }];
+
+      rawSegs.forEach((seg) => {
+        if (seg.type === 'pause') {
+          const pauseSpan = document.createElement('span');
+          pauseSpan.className = 'sub-char unread';
+          pauseSpan.textContent = seg.symbol || '';
+          targetEl.appendChild(pauseSpan);
+
+          state.renderedCueSegments.push({
+            type: 'pause',
+            start: seg.start,
+            end: seg.end,
+            duration: Math.max(0.05, seg.end - seg.start),
+            charSpans: [pauseSpan],
+            lastState: ''
+          });
+        } else {
+          const segCharSpans = [];
+          const subTokens = (seg.text || '').split(/(\s+)/);
+
+          subTokens.forEach((sub) => {
+            if (!sub) return;
+            if (/^\s+$/.test(sub)) {
+              for (const ch of sub) {
+                const spaceSpan = document.createElement('span');
+                spaceSpan.className = 'sub-char unread';
+                spaceSpan.textContent = ch;
+                targetEl.appendChild(spaceSpan);
+                segCharSpans.push(spaceSpan);
+              }
+            } else {
+              const wordGroup = document.createElement('span');
+              wordGroup.className = 'word-punct-group';
+
+              for (const ch of sub) {
+                const charSpan = document.createElement('span');
+                charSpan.className = 'sub-char unread';
+                charSpan.textContent = ch;
+                wordGroup.appendChild(charSpan);
+                segCharSpans.push(charSpan);
+              }
+
+              targetEl.appendChild(wordGroup);
+            }
+          });
+
+          state.renderedCueSegments.push({
+            type: 'text',
+            start: seg.start,
+            end: seg.end,
+            duration: Math.max(0.05, seg.end - seg.start),
+            charSpans: segCharSpans,
+            lastHighlightedCount: -1
+          });
+        }
+      });
+    }
+
+    function renderStaticSubtitleText(text) {
+      const targetEl = getTargetSubtitleContainer();
+      if (state.renderedCueIndex === -2 && state.renderedCueText === text) {
+        showSubtitleBox(Boolean(text));
+        return;
+      }
+      state.renderedCueIndex = -2;
+      state.renderedCueText = text;
+      state.renderedCueSegments = [];
+      targetEl.textContent = text;
+      showSubtitleBox(Boolean(text));
+    }
+
+    function updateSubtitleFrame(nowMs = performance.now()) {
+      if (!subtitleConfig.enabled) {
+        dom.subtitleOverlayBox.classList.add('hidden');
+        dom.subtitleBelowBar.classList.add('hidden');
+        return;
+      }
+
+      const delaySec = Math.max(0, Number(subtitleConfig.delaySeconds) || 0);
+
+      // 1. Tant que l'offset temporel de début de slide n'est pas atteint, afficher « … »
+      if (delaySec > 0 && state.slideElapsed < delaySec) {
+        renderStaticSubtitleText('…');
+        return;
+      }
+
+      const effectiveTime = Math.max(0, state.slideElapsed - delaySec);
+      const cues = state.subtitleCues || [];
+
+      // 2. Si aucune timeline détaillée n'est encore reçue, repli sur le texte brut ou l'aperçu
+      if (!cues.length) {
+        const fallback = (state.fallbackSubtitleText || '').trim();
+        if (fallback) {
+          renderStaticSubtitleText(fallback);
+        } else if (state.isSubConfigOpen) {
+          renderAnimatedConfigPreview(nowMs);
+        } else {
+          renderStaticSubtitleText('');
+        }
+        return;
+      }
+
+      // 3. Recherche de la phrase active pour effectiveTime
+      let activeCueIdx = -1;
+      for (let i = 0; i < cues.length; i++) {
+        const cue = cues[i];
+        if (effectiveTime >= cue.displayStart && effectiveTime < cue.displayEnd) {
+          activeCueIdx = i;
+          break;
+        }
+      }
+      if (activeCueIdx === -1) {
+        if (effectiveTime < cues[0].displayStart) {
+          activeCueIdx = 0;
+        } else {
+          activeCueIdx = cues.length - 1;
+        }
+      }
+
+      const activeCue = cues[activeCueIdx];
+      if (!activeCue || activeCue.isPauseBlock) {
+        renderStaticSubtitleText('');
+        return;
+      }
+
+      // 4. Construction du DOM caractère par caractère si changement de phrase
+      if (state.renderedCueIndex !== activeCueIdx || state.renderedCueText !== (activeCue.text || '')) {
+        buildDomForSubtitleCue(activeCue, activeCueIdx);
+      }
+
+      showSubtitleBox(true);
+
+      // 5. Coloration et révélation caractère par caractère (identique à prompteur.html)
+      state.renderedCueSegments.forEach((seg) => {
+        const segBefore = effectiveTime < seg.start;
+        const segAfter = effectiveTime >= seg.end;
+        const segActive = !segBefore && !segAfter;
+
+        if (seg.type === 'pause') {
+          const span = seg.charSpans[0];
+          if (!span) return;
+          const nextState = segBefore ? 'unread' : 'read';
+          if (seg.lastState !== nextState) {
+            span.className = `sub-char ${nextState}`;
+            seg.lastState = nextState;
+          }
+          return;
+        }
+
+        const totalChars = seg.charSpans.length;
+        let highlightedCount = 0;
+
+        if (segAfter) {
+          highlightedCount = totalChars;
+        } else if (segActive) {
+          const ratio = Math.min(1, Math.max(0, (effectiveTime - seg.start) / seg.duration));
+          highlightedCount = Math.floor(ratio * totalChars);
+        } else {
+          highlightedCount = -1;
+        }
+
+        if (highlightedCount !== seg.lastHighlightedCount) {
+          for (let c = 0; c < totalChars; c++) {
+            const span = seg.charSpans[c];
+            if (highlightedCount < 0 || c > highlightedCount) {
+              span.className = 'sub-char unread';
+            } else if (segActive && c === highlightedCount) {
+              span.className = 'sub-char active';
+            } else if (segActive && c >= highlightedCount - 2 && c < highlightedCount) {
+              span.className = 'sub-char trail';
+            } else {
+              span.className = 'sub-char read';
+            }
+          }
+          seg.lastHighlightedCount = highlightedCount;
+        }
+      });
+    }
+
+    // Aperçu animé caractère par caractère lorsque le panneau Sous-titres est ouvert à l'arrêt
+    function renderAnimatedConfigPreview(nowMs) {
+      const previewPhrase = 'Aperçu des sous-titres écrits caractère par caractère...';
+      if (state.renderedCueIndex !== -3 || state.renderedCueText !== previewPhrase) {
+        buildDomForSubtitleCue({
+          isPauseBlock: false,
+          text: previewPhrase,
+          segments: [{ type: 'text', text: previewPhrase, start: 0, end: 4.2 }]
+        }, -3);
+      }
+      showSubtitleBox(true);
+
+      const seg = state.renderedCueSegments[0];
+      if (!seg) return;
+      const totalChars = seg.charSpans.length;
+      const cycleSec = (nowMs / 1000) % 5.5;
+      const segActive = cycleSec < 4.2;
+      const highlightedCount = segActive
+        ? Math.floor((cycleSec / 4.2) * totalChars)
+        : totalChars;
+
+      if (highlightedCount !== seg.lastHighlightedCount) {
+        for (let c = 0; c < totalChars; c++) {
+          const span = seg.charSpans[c];
+          if (c > highlightedCount) {
+            span.className = 'sub-char unread';
+          } else if (segActive && c === highlightedCount) {
+            span.className = 'sub-char active';
+          } else if (segActive && c >= highlightedCount - 2 && c < highlightedCount) {
+            span.className = 'sub-char trail';
+          } else {
+            span.className = 'sub-char read';
+          }
+        }
+        seg.lastHighlightedCount = highlightedCount;
+      }
+    }
+
+    /**
+     * CHARGEMENT, SAUVEGARDE & RENDU DES RÉGLAGES DES SOUS-TITRES
+     */
+    function loadSubtitleConfig() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_SUBTITLES_CFG);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (typeof parsed.enabled === 'boolean') subtitleConfig.enabled = parsed.enabled;
+          if (parsed.displayMode === 'overlay' || parsed.displayMode === 'below') {
+            subtitleConfig.displayMode = parsed.displayMode;
+          }
+          if (typeof parsed.textColor === 'string' && /^#[0-9A-Fa-f]{6}$/.test(parsed.textColor)) {
+            subtitleConfig.textColor = parsed.textColor.toUpperCase();
+          }
+          if (typeof parsed.fontSize === 'number' && parsed.fontSize >= 18 && parsed.fontSize <= 56) {
+            subtitleConfig.fontSize = parsed.fontSize;
+          }
+          if (typeof parsed.bgOpacity === 'number' && parsed.bgOpacity >= 0 && parsed.bgOpacity <= 90) {
+            subtitleConfig.bgOpacity = parsed.bgOpacity;
+          }
+          if (typeof parsed.overlayBottomPct === 'number' && parsed.overlayBottomPct >= 2 && parsed.overlayBottomPct <= 85) {
+            subtitleConfig.overlayBottomPct = parsed.overlayBottomPct;
+          }
+          if (typeof parsed.delaySeconds === 'number' && parsed.delaySeconds >= 0 && parsed.delaySeconds <= 2) {
+            subtitleConfig.delaySeconds = Math.round(parsed.delaySeconds * 10) / 10;
+          }
+        }
+      } catch (e) {
+        // Ignore
+      }
+      applySubtitleConfigToUI();
+    }
+
+    function saveSubtitleConfig() {
+      try {
+        localStorage.setItem(STORAGE_KEY_SUBTITLES_CFG, JSON.stringify(subtitleConfig));
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    function notifyPrompterSubtitleState() {
+      if (syncChannel) {
+        try {
+          syncChannel.postMessage({
+            type: 'SUBTITLES_STATE_CHANGED',
+            enabled: subtitleConfig.enabled,
+            timestamp: Date.now()
+          });
+        } catch (e) {
+          // Ignore
+        }
+      }
+    }
+
+    function formatHeightLabel(pct) {
+      if (pct <= 12) return `${pct}% (Bas)`;
+      if (pct >= 70) return `${pct}% (Haut)`;
+      if (pct >= 42 && pct <= 58) return `${pct}% (Centre)`;
+      return `${pct}%`;
+    }
+
+    function applySubtitleConfigToUI() {
+      dom.subCfgEnabled.checked = subtitleConfig.enabled;
+      document.querySelectorAll('input[name="subCfgMode"]').forEach((r) => {
+        r.checked = (r.value === subtitleConfig.displayMode);
+      });
+
+      // Position en hauteur & opacité du fond (Overlay)
+      dom.subCfgHeightRange.value = subtitleConfig.overlayBottomPct;
+      dom.subCfgHeightLabel.textContent = formatHeightLabel(subtitleConfig.overlayBottomPct);
+      dom.subtitleOverlayBox.style.bottom = `${subtitleConfig.overlayBottomPct}%`;
+
+      dom.subCfgBgOpacity.value = subtitleConfig.bgOpacity;
+      dom.subCfgBgOpacityLabel.textContent = `${subtitleConfig.bgOpacity}%`;
+      dom.subOverlayControlsGroup.classList.toggle('opacity-45', subtitleConfig.displayMode !== 'overlay');
+      dom.subOverlayControlsGroup.classList.toggle('pointer-events-none', subtitleConfig.displayMode !== 'overlay');
+
+      // Décalage temporel (retard)
+      dom.subCfgDelayRange.value = subtitleConfig.delaySeconds.toFixed(1);
+      dom.subCfgDelayLabel.textContent = subtitleConfig.delaySeconds === 0
+        ? '0,0 s (Direct)'
+        : `+${subtitleConfig.delaySeconds.toFixed(1).replace('.', ',')} s`;
+
+      document.querySelectorAll('.delay-preset-btn').forEach((btn) => {
+        const val = parseFloat(btn.getAttribute('data-delay-preset') || '0');
+        const isSelected = Math.abs(val - subtitleConfig.delaySeconds) < 0.05;
+        btn.classList.toggle('bg-amber-400/20', isSelected);
+        btn.classList.toggle('text-amber-300', isSelected);
+        btn.classList.toggle('border', isSelected);
+        btn.classList.toggle('border-amber-400/50', isSelected);
+        btn.classList.toggle('bg-slate-800', !isSelected);
+        btn.classList.toggle('text-slate-300', !isSelected);
+      });
+
+      // Couleur
+      dom.subCfgCustomColor.value = subtitleConfig.textColor;
+      dom.subCfgColorHexLabel.textContent = subtitleConfig.textColor;
+
+      document.querySelectorAll('.sub-color-swatch').forEach((btn) => {
+        const swatchColor = (btn.getAttribute('data-sub-color') || '').toUpperCase();
+        if (swatchColor === subtitleConfig.textColor) {
+          btn.classList.add('ring-2', 'ring-sky-400', 'scale-110');
+        } else {
+          btn.classList.remove('ring-2', 'ring-sky-400', 'scale-110');
+        }
+      });
+
+      // Taille
+      dom.subCfgFontSizeLabel.textContent = `${subtitleConfig.fontSize}px`;
+      dom.subCfgFontSizeRange.value = subtitleConfig.fontSize;
+
+      // Application des styles visuels sur les conteneurs de sous-titres
+      const alpha = (subtitleConfig.bgOpacity / 100).toFixed(2);
+      dom.subtitleOverlayBox.style.backgroundColor = `rgba(2, 6, 23, ${alpha})`;
+      dom.subtitleOverlayBox.style.backdropFilter = subtitleConfig.bgOpacity > 0 ? 'blur(8px)' : 'none';
+      dom.subtitleOverlayBox.style.border = subtitleConfig.bgOpacity > 10
+        ? '1px solid rgba(148, 163, 184, 0.22)'
+        : '1px solid transparent';
+
+      const isDarkText = subtitleConfig.textColor === '#0F172A';
+      const textShadowStyle = isDarkText
+        ? '0 1px 2px rgba(255, 255, 255, 0.65)'
+        : '0 2px 10px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9)';
+
+      dom.subtitleOverlayText.style.color = subtitleConfig.textColor;
+      dom.subtitleOverlayText.style.setProperty('--sub-read-color', subtitleConfig.textColor);
+      dom.subtitleOverlayText.style.fontSize = `${subtitleConfig.fontSize}px`;
+      dom.subtitleOverlayText.style.textShadow = textShadowStyle;
+
+      dom.subtitleBelowText.style.color = subtitleConfig.textColor;
+      dom.subtitleBelowText.style.setProperty('--sub-read-color', subtitleConfig.textColor);
+      dom.subtitleBelowText.style.fontSize = `${subtitleConfig.fontSize}px`;
+
+      dom.btnToggleSubConfig.classList.toggle('border-sky-500/50', subtitleConfig.enabled);
+      dom.btnToggleSubConfig.classList.toggle('border', subtitleConfig.enabled);
+
+      // Force la reconstruction sur le conteneur actif en cas de changement Overlay <-> Sous la slide
+      state.renderedCueIndex = -99;
+      updateSubtitleFrame(performance.now());
+    }
+
+    /**
+     * CHARGEMENT & SAUVEGARDE DE LA CONFIGURATION DU MINI COMPTEUR
+     */
+    function loadTimerConfig() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_TIMER_CFG);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (typeof parsed.enabled === 'boolean') timerConfig.enabled = parsed.enabled;
+          if (parsed.displayMode === 'always' || parsed.displayMode === 'before_end') {
+            timerConfig.displayMode = parsed.displayMode;
+          }
+          if (typeof parsed.minutesBeforeEnd === 'number' && parsed.minutesBeforeEnd > 0) {
+            timerConfig.minutesBeforeEnd = parsed.minutesBeforeEnd;
+          }
+          if (typeof parsed.counterColor === 'string' && /^#[0-9A-Fa-f]{6}$/.test(parsed.counterColor)) {
+            timerConfig.counterColor = parsed.counterColor.toUpperCase();
+          }
+          if (['bottom-right', 'bottom-left', 'top-right', 'top-left'].includes(parsed.position)) {
+            timerConfig.position = parsed.position;
+          }
+        }
+      } catch (e) {
+        // Ignore
+      }
+      applyConfigToUI();
+    }
+
+    function saveTimerConfig() {
+      try {
+        localStorage.setItem(STORAGE_KEY_TIMER_CFG, JSON.stringify(timerConfig));
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    function applyConfigToUI() {
+      dom.cfgEnabled.checked = timerConfig.enabled;
+      const radios = document.querySelectorAll('input[name="cfgDisplayMode"]');
+      radios.forEach((r) => {
+        r.checked = (r.value === timerConfig.displayMode);
+      });
+      dom.cfgMinutesBeforeEnd.value = timerConfig.minutesBeforeEnd;
+      dom.cfgCustomColor.value = timerConfig.counterColor;
+      dom.cfgColorHexLabel.textContent = timerConfig.counterColor;
+      dom.cfgPosition.value = timerConfig.position;
+
+      document.querySelectorAll('.color-swatch').forEach((btn) => {
+        const swatchColor = (btn.getAttribute('data-color') || '').toUpperCase();
+        if (swatchColor === timerConfig.counterColor) {
+          btn.classList.add('border-white', 'scale-110');
+          btn.classList.remove('border-transparent');
+        } else {
+          btn.classList.remove('border-white', 'scale-110');
+          btn.classList.add('border-transparent');
+        }
+      });
+
+      dom.miniGlobalTimer.style.color = timerConfig.counterColor;
+
+      dom.miniTimerOverlay.classList.remove('bottom-4', 'top-4', 'right-4', 'left-4');
+      if (timerConfig.position === 'bottom-right') {
+        dom.miniTimerOverlay.classList.add('bottom-4', 'right-4');
+      } else if (timerConfig.position === 'bottom-left') {
+        dom.miniTimerOverlay.classList.add('bottom-4', 'left-4');
+      } else if (timerConfig.position === 'top-right') {
+        dom.miniTimerOverlay.classList.add('top-4', 'right-4');
+      } else if (timerConfig.position === 'top-left') {
+        dom.miniTimerOverlay.classList.add('top-4', 'left-4');
+      }
+
+      updateMiniTimerDisplay(performance.now());
+    }
+
+    /**
+     * MISE À JOUR EN TEMPS RÉEL DU MINI OVERLAY (POINT VERT/ROUGE, HORLOGE, FLASH 10s)
+     */
+    function updateMiniTimerDisplay(nowMs) {
+      const isAlive = state.isSynced && (Date.now() - state.lastSyncReceivedAt < 4500);
+      if (isAlive) {
+        dom.miniSyncDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.95)] shrink-0 transition-colors duration-300';
+      } else {
+        dom.miniSyncDot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.85)] shrink-0 transition-colors duration-300';
+      }
+
+      dom.miniGlobalTimer.textContent = formatMMSS(state.globalElapsed);
+      dom.miniGlobalTotal.textContent = `/ ${formatMMSS(state.totalSeconds)}`;
+
+      if (state.globalElapsed > state.totalSeconds) {
+        dom.miniGlobalTimer.style.color = '#FB7185';
+      } else {
+        dom.miniGlobalTimer.style.color = timerConfig.counterColor;
+      }
+
+      if (!timerConfig.enabled) {
+        dom.miniTimerOverlay.classList.add('hidden');
+        return;
+      }
+
+      if (timerConfig.displayMode === 'before_end') {
+        const remainingSeconds = state.totalSeconds - state.globalElapsed;
+        const thresholdSeconds = timerConfig.minutesBeforeEnd * 60;
+        if (remainingSeconds > thresholdSeconds) {
+          dom.miniTimerOverlay.classList.add('hidden');
+          return;
+        }
+      }
+
+      dom.miniTimerOverlay.classList.remove('hidden');
+
+      const bucket = state.isRunning
+        ? Math.floor(state.globalElapsed / 10)
+        : Math.floor(Date.now() / 10000);
+
+      if (bucket !== state.lastPulseBucket) {
+        if (state.lastPulseBucket !== -1) {
+          state.pulseUntil = nowMs + 2200;
+        }
+        state.lastPulseBucket = bucket;
+      }
+
+      const shouldHighlight = (nowMs < state.pulseUntil) || state.isConfigOpen;
+      dom.miniTimerOverlay.classList.toggle('is-highlighted', shouldHighlight);
+    }
+
+    /**
+     * BOUCLE D'ANIMATION FLUIDE 60 FPS (COMPTEUR + ÉCRITURE CARACTÈRE PAR CARACTÈRE)
+     */
+    function timerAnimationLoop(nowMs) {
+      if (state.isRunning) {
+        if (state.lastFrameTime !== null) {
+          const dt = (nowMs - state.lastFrameTime) / 1000;
+          state.globalElapsed += dt;
+          state.slideElapsed += dt;
+        }
+        state.lastFrameTime = nowMs;
+      } else {
+        state.lastFrameTime = null;
+      }
+
+      updateSubtitleFrame(nowMs);
+      updateMiniTimerDisplay(nowMs);
+      requestAnimationFrame(timerAnimationLoop);
+    }
+
+    /**
+     * DÉTECTION & AFFICHAGE DES IMAGES DU RÉPERTOIRE slides/
+     */
+    function getCandidatePathsForSlide(slideNumber) {
+      const n = String(slideNumber);
+      const nn = n.padStart(2, '0');
+      const bases = [
+        `slides/Slides_${nn}`,
+        `slides/Slides_${n}`,
+        `slides/slides_${nn}`,
+        `slides/slides_${n}`,
+        `slides/Page_${nn}`,
+        `slides/Page_${n}`,
+        `slides/page_${nn}`,
+        `slides/page_${n}`,
+        `slides/slide-${nn}`,
+        `slides/slide-${n}`,
+        `slides/slide${nn}`,
+        `slides/slide${n}`,
+        `slides/slide_${nn}`,
+        `slides/slide_${n}`,
+        `slides/Slide${nn}`,
+        `slides/Slide${n}`,
+        `slides/Slide-${nn}`,
+        `slides/Slide-${n}`,
+        `slides/Diapositive${n}`,
+        `slides/Diapositive${nn}`,
+        `slides/${nn}`,
+        `slides/${n}`
+      ];
+      const exts = ['png', 'jpg', 'jpeg', 'webp', 'PNG', 'JPG'];
+      const candidates = [];
+      for (const base of bases) {
+        for (const ext of exts) {
+          candidates.push(`${base}.${ext}`);
+        }
+      }
+      return candidates;
+    }
+
+    function probeImageUrl(url) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(url);
+        img.onerror = () => resolve(null);
+        img.src = url;
+      });
+    }
+
+    async function resolveSlideImageUrl(slideIndex) {
+      if (state.localFolderUrls.length > 0) {
+        return state.localFolderUrls[slideIndex] || null;
+      }
+
+      const slideNumber = slideIndex + 1;
+      if (state.resolvedUrlCache[slideNumber]) {
+        return state.resolvedUrlCache[slideNumber];
+      }
+
+      const candidates = getCandidatePathsForSlide(slideNumber);
+      for (const candidate of candidates) {
+        const valid = await probeImageUrl(candidate);
+        if (valid) {
+          state.resolvedUrlCache[slideNumber] = valid;
+          return valid;
+        }
+      }
+      return null;
+    }
+
+    async function displaySlide(slideIndex, meta = {}) {
+      const total = meta.totalSlides || state.totalSlides || DEFAULT_TITLES.length;
+      const clampedIdx = Math.max(0, Math.min(total - 1, slideIndex));
+      const fallbackMeta = DEFAULT_TITLES[clampedIdx] || {
+        part: `PRESENTATION DIAPORAMA`,
+        title: `Slide ${clampedIdx + 1}`
+      };
+
+      state.slideIndex = clampedIdx;
+      state.totalSlides = total;
+      state.slideTitle = meta.slideTitle || fallbackMeta.title;
+      state.slidePart = meta.slidePart || fallbackMeta.part;
+
+      const label = `Slide ${clampedIdx + 1} / ${total}`;
+      dom.hudSlideCounter.textContent = label;
+      dom.fallbackSlideBadge.textContent = label.toUpperCase();
+      dom.fallbackPartText.textContent = state.slidePart;
+      dom.fallbackTitleText.textContent = state.slideTitle;
+      document.title = `${label} — Écran Casté`;
+
+      const imageUrl = await resolveSlideImageUrl(clampedIdx);
+      if (state.slideIndex !== clampedIdx) return;
+
+      if (imageUrl) {
+        dom.slideImage.style.opacity = '0.25';
+        dom.slideImage.src = imageUrl;
+        dom.slideImage.alt = state.slideTitle;
+        dom.slideImage.classList.remove('hidden');
+        dom.fallbackCard.classList.add('hidden');
+        requestAnimationFrame(() => {
+          dom.slideImage.style.opacity = '1';
+        });
+      } else {
+        dom.slideImage.classList.add('hidden');
+        dom.fallbackCard.classList.remove('hidden');
+      }
+
+      if (clampedIdx + 1 < total) {
+        resolveSlideImageUrl(clampedIdx + 1);
+      }
+    }
+
+    /**
+     * SYNCHRONISATION TEMPS RÉEL AVEC prompteur.html
+     */
+    const syncChannel = ('BroadcastChannel' in window)
+      ? new BroadcastChannel(SYNC_CHANNEL_NAME)
+      : null;
+
+    function handleIncomingSyncMessage(msg) {
+      if (!msg || typeof msg !== 'object') return;
+
+      if (msg.type === 'PROMPTER_CLOSED') {
+        state.isSynced = false;
+        state.isRunning = false;
+        state.subtitleCues = [];
+        state.fallbackSubtitleText = '';
+        state.renderedCueIndex = -99;
+        updateSubtitleFrame(performance.now());
+        updateMiniTimerDisplay(performance.now());
+        return;
+      }
+
+      if (msg.type === 'SUBTITLE_VISIBILITY' && typeof msg.enabled === 'boolean') {
+        subtitleConfig.enabled = msg.enabled;
+        saveSubtitleConfig();
+        applySubtitleConfigToUI();
+        return;
+      }
+
+      if (
+        msg.type === 'SLIDE_CHANGE' ||
+        msg.type === 'SYNC_STATE' ||
+        msg.type === 'TIMER_TICK' ||
+        msg.type === 'SUBTITLE_UPDATE' ||
+        msg.type === 'SET_SUBTITLES_ENABLED'
+      ) {
+        state.isSynced = true;
+        state.lastSyncReceivedAt = Date.now();
+
+        const incomingSubFlag = typeof msg.subtitleEnabled === 'boolean'
+          ? msg.subtitleEnabled
+          : (typeof msg.subtitlesEnabled === 'boolean' ? msg.subtitlesEnabled : null);
+
+        if (incomingSubFlag !== null && incomingSubFlag !== subtitleConfig.enabled) {
+          subtitleConfig.enabled = incomingSubFlag;
+          saveSubtitleConfig();
+          applySubtitleConfigToUI();
+        }
+
+        const isSlideTransition = (msg.type === 'SLIDE_CHANGE') ||
+          (typeof msg.slideIndex === 'number' && msg.slideIndex !== state.slideIndex);
+
+        if (typeof msg.totalSeconds === 'number' && msg.totalSeconds > 0) {
+          state.totalSeconds = msg.totalSeconds;
+        }
+        if (typeof msg.isRunning === 'boolean') {
+          state.isRunning = msg.isRunning;
+        }
+
+        const latencySec = (msg.isRunning && typeof msg.timestamp === 'number')
+          ? Math.max(0, (Date.now() - msg.timestamp) / 1000)
+          : 0;
+
+        if (typeof msg.globalElapsed === 'number') {
+          state.globalElapsed = msg.globalElapsed + latencySec;
+        }
+        if (typeof msg.slideElapsed === 'number') {
+          state.slideElapsed = msg.slideElapsed + latencySec;
+        } else if (isSlideTransition) {
+          state.slideElapsed = 0;
+        }
+
+        if (Array.isArray(msg.subtitleCues)) {
+          state.subtitleCues = msg.subtitleCues;
+          state.renderedCueIndex = -99;
+        } else if (isSlideTransition) {
+          state.subtitleCues = [];
+          state.renderedCueIndex = -99;
+          sendCommandToPrompter('REQUEST_SYNC');
+        } else if (!state.subtitleCues.length) {
+          sendCommandToPrompter('REQUEST_SYNC');
+        }
+
+        if (typeof msg.subtitleText === 'string') {
+          state.fallbackSubtitleText = msg.subtitleText;
+        }
+
+        updateSubtitleFrame(performance.now());
+
+        if (isSlideTransition || msg.type === 'SYNC_STATE') {
+          displaySlide(typeof msg.slideIndex === 'number' ? msg.slideIndex : state.slideIndex, msg);
+        }
+      }
+    }
+
+    function sendCommandToPrompter(commandType, extraPayload = {}) {
+      if (syncChannel) {
+        try {
+          syncChannel.postMessage({ type: commandType, timestamp: Date.now(), ...extraPayload });
+        } catch (e) {
+          // Ignore
+        }
+      }
+    }
+
+    if (syncChannel) {
+      syncChannel.onmessage = (event) => handleIncomingSyncMessage(event.data);
+    }
+
+    window.addEventListener('storage', (e) => {
+      if (e.key === STORAGE_KEY_SYNC && e.newValue) {
+        try {
+          handleIncomingSyncMessage(JSON.parse(e.newValue));
+        } catch (err) {
+          // Ignore
+        }
+      }
+    });
+
+    window.addEventListener('beforeunload', () => {
+      sendCommandToPrompter('JURY_SCREEN_CLOSED');
+    });
+
+    /**
+     * ÉCOUTEURS CONFIGURATION COMPTEUR & SOUS-TITRES
+     */
+    function toggleConfigModal(forceState) {
+      state.isConfigOpen = typeof forceState === 'boolean' ? forceState : !state.isConfigOpen;
+      if (state.isConfigOpen) {
+        if (state.isSubConfigOpen) toggleSubtitleConfigModal(false);
+        dom.configModal.classList.remove('modal-hidden');
+        revealHudTemporarily();
+      } else {
+        dom.configModal.classList.add('modal-hidden');
+      }
+      updateMiniTimerDisplay(performance.now());
+    }
+
+    function toggleSubtitleConfigModal(forceState) {
+      state.isSubConfigOpen = typeof forceState === 'boolean' ? forceState : !state.isSubConfigOpen;
+      if (state.isSubConfigOpen) {
+        if (state.isConfigOpen) toggleConfigModal(false);
+        dom.subtitleConfigModal.classList.remove('modal-hidden');
+        revealHudTemporarily();
+      } else {
+        dom.subtitleConfigModal.classList.add('modal-hidden');
+      }
+      state.renderedCueIndex = -99;
+      updateSubtitleFrame(performance.now());
+    }
+
+    dom.btnToggleConfig.addEventListener('click', () => toggleConfigModal());
+    dom.btnCloseConfig.addEventListener('click', () => toggleConfigModal(false));
+
+    dom.btnToggleSubConfig.addEventListener('click', () => toggleSubtitleConfigModal());
+    dom.btnCloseSubConfig.addEventListener('click', () => toggleSubtitleConfigModal(false));
+
+    // Écouteurs panneau sous-titres
+    dom.subCfgEnabled.addEventListener('change', (e) => {
+      subtitleConfig.enabled = e.target.checked;
+      saveSubtitleConfig();
+      applySubtitleConfigToUI();
+      notifyPrompterSubtitleState();
+    });
+
+    document.querySelectorAll('input[name="subCfgMode"]').forEach((radio) => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          subtitleConfig.displayMode = e.target.value;
+          saveSubtitleConfig();
+          applySubtitleConfigToUI();
+        }
+      });
+    });
+
+    dom.subCfgHeightRange.addEventListener('input', (e) => {
+      subtitleConfig.overlayBottomPct = Math.max(2, Math.min(85, parseInt(e.target.value, 10) || 5));
+      saveSubtitleConfig();
+      applySubtitleConfigToUI();
+    });
+
+    dom.subCfgBgOpacity.addEventListener('input', (e) => {
+      subtitleConfig.bgOpacity = Math.max(0, Math.min(90, parseInt(e.target.value, 10) || 0));
+      saveSubtitleConfig();
+      applySubtitleConfigToUI();
+    });
+
+    function setSubtitleDelay(newDelaySec) {
+      const clamped = Math.max(0, Math.min(2, Math.round(newDelaySec * 10) / 10));
+      subtitleConfig.delaySeconds = clamped;
+      saveSubtitleConfig();
+      applySubtitleConfigToUI();
+    }
+
+    dom.subCfgDelayRange.addEventListener('input', (e) => {
+      setSubtitleDelay(parseFloat(e.target.value) || 0);
+    });
+
+    document.querySelectorAll('.delay-preset-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const val = parseFloat(btn.getAttribute('data-delay-preset') || '0');
+        setSubtitleDelay(val);
+      });
+    });
+
+    document.querySelectorAll('.sub-color-swatch').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const hex = btn.getAttribute('data-sub-color');
+        if (hex) {
+          subtitleConfig.textColor = hex.toUpperCase();
+          saveSubtitleConfig();
+          applySubtitleConfigToUI();
+        }
+      });
+    });
+
+    dom.subCfgCustomColor.addEventListener('input', (e) => {
+      subtitleConfig.textColor = e.target.value.toUpperCase();
+      saveSubtitleConfig();
+      applySubtitleConfigToUI();
+    });
+
+    function updateSubtitleFontSize(newSize) {
+      subtitleConfig.fontSize = Math.max(18, Math.min(56, Math.round(newSize)));
+      saveSubtitleConfig();
+      applySubtitleConfigToUI();
+    }
+
+    dom.btnSubFontDec.addEventListener('click', () => updateSubtitleFontSize(subtitleConfig.fontSize - 2));
+    dom.btnSubFontInc.addEventListener('click', () => updateSubtitleFontSize(subtitleConfig.fontSize + 2));
+    dom.subCfgFontSizeRange.addEventListener('input', (e) => {
+      updateSubtitleFontSize(parseInt(e.target.value, 10) || 30);
+    });
+
+    // Écouteurs panneau compteur
+    dom.cfgEnabled.addEventListener('change', (e) => {
+      timerConfig.enabled = e.target.checked;
+      saveTimerConfig();
+      applyConfigToUI();
+    });
+
+    document.querySelectorAll('input[name="cfgDisplayMode"]').forEach((radio) => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          timerConfig.displayMode = e.target.value;
+          saveTimerConfig();
+          applyConfigToUI();
+        }
+      });
+    });
+
+    function updateMinutesBeforeEnd(newVal) {
+      const clamped = Math.max(0.5, Math.min(60, Math.round(newVal * 2) / 2));
+      timerConfig.minutesBeforeEnd = clamped;
+      timerConfig.displayMode = 'before_end';
+      saveTimerConfig();
+      applyConfigToUI();
+    }
+
+    dom.cfgMinutesBeforeEnd.addEventListener('change', (e) => {
+      const val = parseFloat(e.target.value);
+      if (!Number.isNaN(val)) updateMinutesBeforeEnd(val);
+    });
+    dom.btnDecMinutes.addEventListener('click', () => updateMinutesBeforeEnd(timerConfig.minutesBeforeEnd - 0.5));
+    dom.btnIncMinutes.addEventListener('click', () => updateMinutesBeforeEnd(timerConfig.minutesBeforeEnd + 0.5));
+
+    document.querySelectorAll('.color-swatch').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const hex = btn.getAttribute('data-color');
+        if (hex) {
+          timerConfig.counterColor = hex.toUpperCase();
+          saveTimerConfig();
+          applyConfigToUI();
+        }
+      });
+    });
+
+    dom.cfgCustomColor.addEventListener('input', (e) => {
+      timerConfig.counterColor = e.target.value.toUpperCase();
+      saveTimerConfig();
+      applyConfigToUI();
+    });
+
+    dom.cfgPosition.addEventListener('change', (e) => {
+      timerConfig.position = e.target.value;
+      saveTimerConfig();
+      applyConfigToUI();
+    });
+
+    dom.btnTestPulse.addEventListener('click', () => {
+      state.pulseUntil = performance.now() + 2500;
+      updateMiniTimerDisplay(performance.now());
+    });
+
+    function triggerNext() {
+      sendCommandToPrompter('COMMAND_NEXT_SLIDE');
+      if (state.slideIndex < state.totalSlides - 1) {
+        state.slideElapsed = 0;
+        state.subtitleCues = [];
+        state.fallbackSubtitleText = '';
+        state.renderedCueIndex = -99;
+        updateSubtitleFrame(performance.now());
+        displaySlide(state.slideIndex + 1);
+      }
+    }
+
+    function triggerPrev() {
+      sendCommandToPrompter('COMMAND_PREV_SLIDE');
+      if (state.slideIndex > 0) {
+        state.slideElapsed = 0;
+        state.subtitleCues = [];
+        state.fallbackSubtitleText = '';
+        state.renderedCueIndex = -99;
+        updateSubtitleFrame(performance.now());
+        displaySlide(state.slideIndex - 1);
+      }
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    dom.btnHudNext.addEventListener('click', triggerNext);
+    dom.btnHudPrev.addEventListener('click', triggerPrev);
+    dom.btnFullscreen.addEventListener('click', toggleFullscreen);
+    document.body.addEventListener('dblclick', (e) => {
+      if (
+        dom.configModal.contains(e.target) ||
+        dom.subtitleConfigModal.contains(e.target) ||
+        dom.hudOverlay.contains(e.target)
+      ) {
+        return;
+      }
+      toggleFullscreen();
+    });
+
+    dom.folderPickerInput.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith('image/'));
+      if (files.length === 0) return;
+
+      files.sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true, sensitivity: 'base' }));
+
+      state.localFolderUrls.forEach((u) => URL.revokeObjectURL(u));
+      state.localFolderUrls = files.map((f) => URL.createObjectURL(f));
+      state.totalSlides = Math.max(state.totalSlides, files.length);
+
+      displaySlide(state.slideIndex, { totalSlides: state.totalSlides });
+      e.target.value = '';
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (document.activeElement === dom.cfgMinutesBeforeEnd) return;
+
+      if (e.code === 'Space' || e.code === 'ArrowRight') {
+        e.preventDefault();
+        triggerNext();
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        triggerPrev();
+      } else if (e.code === 'KeyF') {
+        e.preventDefault();
+        toggleFullscreen();
+      } else if (e.code === 'KeyC') {
+        e.preventDefault();
+        toggleConfigModal();
+      } else if (e.code === 'KeyS') {
+        e.preventDefault();
+        subtitleConfig.enabled = !subtitleConfig.enabled;
+        saveSubtitleConfig();
+        applySubtitleConfigToUI();
+        notifyPrompterSubtitleState();
+      } else if (e.code === 'Escape' && (state.isConfigOpen || state.isSubConfigOpen)) {
+        e.preventDefault();
+        toggleConfigModal(false);
+        toggleSubtitleConfigModal(false);
+      } else if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        sendCommandToPrompter('COMMAND_RESET');
+        state.globalElapsed = 0;
+        state.slideElapsed = 0;
+        state.subtitleCues = [];
+        state.fallbackSubtitleText = '';
+        state.renderedCueIndex = -99;
+        updateSubtitleFrame(performance.now());
+        displaySlide(0);
+      }
+    }, true);
+
+    // Masquage automatique de la barre HUD après 2,5 s d'inactivité souris
+    function revealHudTemporarily() {
+      dom.hudOverlay.classList.remove('hud-hidden');
+      if (state.hudTimer) clearTimeout(state.hudTimer);
+      state.hudTimer = setTimeout(() => {
+        if (!state.isConfigOpen && !state.isSubConfigOpen) {
+          dom.hudOverlay.classList.add('hud-hidden');
+        }
+      }, 2500);
+    }
+
+    window.addEventListener('mousemove', revealHudTemporarily);
+    window.addEventListener('mousedown', revealHudTemporarily);
+
+    /**
+     * INITIALISATION AU CHARGEMENT
+     */
+    window.onload = function () {
+      loadTimerConfig();
+      loadSubtitleConfig();
+
+      try {
+        const savedSync = localStorage.getItem(STORAGE_KEY_SYNC);
+        if (savedSync) {
+          const parsed = JSON.parse(savedSync);
+          if (typeof parsed.totalSeconds === 'number') state.totalSeconds = parsed.totalSeconds;
+          if (typeof parsed.globalElapsed === 'number') state.globalElapsed = parsed.globalElapsed;
+          if (typeof parsed.slideElapsed === 'number') state.slideElapsed = parsed.slideElapsed;
+          if (typeof parsed.isRunning === 'boolean') state.isRunning = parsed.isRunning;
+
+          const savedSubFlag = typeof parsed.subtitleEnabled === 'boolean'
+            ? parsed.subtitleEnabled
+            : (typeof parsed.subtitlesEnabled === 'boolean' ? parsed.subtitlesEnabled : null);
+          if (savedSubFlag !== null) {
+            subtitleConfig.enabled = savedSubFlag;
+            applySubtitleConfigToUI();
+          }
+
+          if (Array.isArray(parsed.subtitleCues)) {
+            state.subtitleCues = parsed.subtitleCues;
+          }
+          if (typeof parsed.subtitleText === 'string') {
+            state.fallbackSubtitleText = parsed.subtitleText;
+          }
+
+          updateSubtitleFrame(performance.now());
+          displaySlide(parsed.slideIndex || 0, parsed);
+        } else {
+          displaySlide(0);
+        }
+      } catch (e) {
+        displaySlide(0);
+      }
+
+      sendCommandToPrompter('JURY_SCREEN_READY', { subtitlesEnabled: subtitleConfig.enabled });
+      revealHudTemporarily();
+      requestAnimationFrame(timerAnimationLoop);
+    };
+  </script>
+</body>
+</html>

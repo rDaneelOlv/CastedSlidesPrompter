@@ -1,0 +1,2503 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prompteur — Diaporama</title>
+
+  <!-- Chargement de Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Polices Google Fonts : Inter pour la lisibilité & JetBrains Mono pour les chronomètres -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            stage: '#0B1120',
+            surface: '#111827',
+            card: '#1E293B',
+            unread: '#64748B',
+            read: '#F8FAFC',
+            cursorGold: '#FACC15',
+            cursorCyan: '#38BDF8',
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* Styles de base haute lisibilité pour prompteur face caméra / auditoire */
+    html, body {
+      background-color: #0B1120;
+      color: #F8FAFC;
+      font-family: 'Inter', system-ui, sans-serif;
+      scroll-behavior: smooth;
+      overflow-x: clip;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Barre supérieure strictement verrouillée en haut de l'écran */
+    #topBar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 50;
+      width: 100%;
+    }
+
+    /* Encapsulation des mots et de leur ponctuation attachée pour éviter tout retour à la ligne orphelin */
+    .word,
+    .word-punct-group {
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    /* Styles des caractères individuels pour coloration fluide */
+    .char {
+      color: #64748B;
+      transition: color 0.06s linear, text-shadow 0.08s linear;
+    }
+
+    .char.read {
+      color: #F8FAFC;
+    }
+
+    .char.trail {
+      color: #38BDF8;
+    }
+
+    .char.active {
+      color: #FACC15;
+      text-shadow: 0 0 14px rgba(250, 204, 21, 0.65);
+    }
+
+    /* Carte de bullet point */
+    .bullet-card {
+      border-left: 4px solid rgba(100, 116, 139, 0.25);
+      background: rgba(15, 23, 42, 0.45);
+      transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .bullet-card:hover {
+      background: rgba(30, 41, 59, 0.65);
+      border-left-color: rgba(56, 189, 248, 0.5);
+    }
+
+    .bullet-card.is-active {
+      border-left: 5px solid #38BDF8;
+      background: linear-gradient(90deg, rgba(30, 41, 59, 0.92) 0%, rgba(15, 23, 42, 0.78) 100%);
+      box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(56, 189, 248, 0.22);
+      transform: scale(1.012);
+    }
+
+    .bullet-card.is-past {
+      opacity: 0.72;
+      border-left-color: rgba(248, 250, 252, 0.25);
+    }
+
+    /* Effet visuel pour les pauses de ponctuation ('--', ',', ';', ':', '.', '?', '!', '...') et nouveau paragraphe ('¶') */
+    .inline-pause-token {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.03em 0.34em;
+      margin: 0 0.16em 0 0.10em;
+      border-radius: 0.45rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.76em;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      line-height: 1.25;
+      vertical-align: baseline;
+      color: rgba(250, 204, 21, 0.78);
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid rgba(100, 116, 139, 0.45);
+      overflow: hidden;
+      transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1),
+                  color 0.14s ease,
+                  border-color 0.14s ease,
+                  background-color 0.14s ease,
+                  box-shadow 0.18s ease;
+    }
+
+    .inline-pause-token.is-dash-token {
+      padding: 0.04em 0.42em;
+      margin: 0 0.24em;
+      letter-spacing: 0.04em;
+      vertical-align: middle;
+    }
+
+    .inline-pause-token.is-paragraph-token {
+      margin-left: 0.32em;
+      padding: 0.04em 0.40em;
+      color: rgba(167, 243, 208, 0.8);
+      border-color: rgba(52, 211, 153, 0.35);
+      vertical-align: middle;
+    }
+
+    .inline-pause-token .inline-pause-fill {
+      position: absolute;
+      inset: 0;
+      width: 0%;
+      background: linear-gradient(90deg, rgba(250, 204, 21, 0.32), rgba(56, 189, 248, 0.28));
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .inline-pause-token .inline-pause-label {
+      position: relative;
+      z-index: 1;
+    }
+
+    .inline-pause-token.is-active {
+      color: #FEF08A;
+      background: rgba(250, 204, 21, 0.22);
+      border-color: #FACC15;
+      box-shadow: 0 0 18px rgba(250, 204, 21, 0.65), 0 0 0 2px rgba(250, 204, 21, 0.25);
+      transform: scale(1.14);
+    }
+
+    .inline-pause-token.is-read {
+      color: #7DD3FC;
+      background: rgba(14, 165, 233, 0.14);
+      border-color: rgba(56, 189, 248, 0.35);
+      box-shadow: none;
+      transform: scale(1);
+    }
+
+    /* Bandeau de pause */
+    .pause-card {
+      border: 1px dashed rgba(250, 204, 21, 0.35);
+      background: rgba(30, 41, 59, 0.45);
+      transition: all 0.28s ease;
+    }
+
+    .pause-card.is-active {
+      border-style: solid;
+      border-color: #FACC15;
+      background: rgba(250, 204, 21, 0.1);
+      box-shadow: 0 0 25px rgba(250, 204, 21, 0.14);
+      transform: scale(1.01);
+    }
+
+    /* Overlay glisser-déposer .txt */
+    #dropOverlay {
+      transition: opacity 0.2s ease;
+    }
+
+    /* Barre de défilement discrète */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0B1120;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1E293B;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+
+    /* Animation douce du bouton Espace en fin de slide */
+    @keyframes pulseBorder {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.45); }
+      50% { box-shadow: 0 0 0 8px rgba(56, 189, 248, 0); }
+    }
+    .pulse-next {
+      animation: pulseBorder 1.8s infinite;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-sky-500/30 selection:text-sky-200">
+
+  <!-- ===================================================================== -->
+  <!-- BARRE SUPÉRIEURE VERROUILLÉE : TIMERS, AVANCE/RETARD & CONTRÔLES      -->
+  <!-- ===================================================================== -->
+  <header id="topBar" class="fixed top-0 left-0 right-0 z-50 w-full bg-slate-950/95 backdrop-blur-md border-b border-slate-800/90 shadow-2xl">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex flex-col gap-2.5">
+
+      <!-- Ligne 1 : Chronomètre Global, Chronomètre Slide, Indicateur Avance/Retard & Actions Principales -->
+      <div class="flex flex-wrap items-center justify-between gap-2 sm:gap-4">
+
+        <!-- Bloc Timers (Global + Slide + Delta) -->
+        <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+
+          <!-- 1. Chronomètre Global -->
+          <div class="bg-slate-900/95 border border-slate-800 rounded-xl px-3 py-1.5 flex flex-col min-w-[148px] sm:min-w-[172px]">
+            <div class="flex items-center justify-between text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
+              <span>Global</span>
+              <span id="globalPercent" class="font-mono text-slate-500">0%</span>
+            </div>
+            <div class="flex items-baseline gap-1.5 mt-0.5">
+              <span id="globalTimerDisplay" class="font-mono text-2xl sm:text-3xl font-extrabold text-white tracking-tight">00:00</span>
+              <span id="globalTotalDisplay" class="font-mono text-xs sm:text-sm text-slate-400">/ 06:14</span>
+            </div>
+            <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1">
+              <div id="globalProgressBar" class="h-full bg-gradient-to-r from-sky-500 to-indigo-400 transition-all duration-150" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <!-- 2. Chronomètre de la Slide en cours -->
+          <div id="slideTimerBox" class="bg-slate-900/95 border border-slate-800 rounded-xl px-3 py-1.5 flex flex-col min-w-[148px] sm:min-w-[172px] transition-colors">
+            <div class="flex items-center justify-between text-[11px] uppercase tracking-wider text-sky-400 font-semibold">
+              <span id="slideTimerLabel">Slide 1 / 5</span>
+              <span id="slidePercent" class="font-mono text-slate-400">0%</span>
+            </div>
+            <div class="flex items-baseline gap-1.5 mt-0.5">
+              <span id="slideTimerDisplay" class="font-mono text-2xl sm:text-3xl font-extrabold text-sky-300 tracking-tight">00:00</span>
+              <span id="slideDurationDisplay" class="font-mono text-xs sm:text-sm text-slate-400">/ 01:05</span>
+            </div>
+            <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1">
+              <div id="slideProgressBar" class="h-full bg-gradient-to-r from-cyan-400 to-amber-300 transition-all duration-150" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <!-- 3. Indicateur Avance / Retard par rapport à l'horodatage théorique -->
+          <div id="deltaBox" class="bg-slate-900/95 border border-slate-800 rounded-xl px-3 py-1.5 flex flex-col justify-center min-w-[138px] sm:min-w-[158px] transition-colors">
+            <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Rythme / Timing</span>
+            <div class="flex items-center gap-1.5 mt-0.5">
+              <span id="deltaValue" class="font-mono text-xl sm:text-2xl font-extrabold text-emerald-400">+00:00</span>
+            </div>
+            <span id="deltaStatusText" class="text-[11px] font-medium text-emerald-400/90 mt-0.5">À l'heure</span>
+          </div>
+        </div>
+
+        <!-- Bloc Boutons de Lecture & Navigation -->
+        <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <!-- Démarrer / Pause (Raccourci : Espace) -->
+          <button
+            id="btnPlayPause"
+            type="button"
+            title="Démarrer ou mettre en pause le chronomètre (Raccourci : Espace, P ou Entrée)"
+            class="px-3.5 sm:px-4 py-2.5 rounded-xl font-bold text-sm sm:text-base flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 transition active:scale-95 cursor-pointer"
+          >
+            <svg id="iconPlay" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+            </svg>
+            <svg id="iconPause" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M5.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75A.75.75 0 007.25 3h-1.5zM12.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75a.75.75 0 00-.75-.75h-1.5z" />
+            </svg>
+            <span id="playPauseText">Démarrer</span>
+            <kbd class="hidden md:inline-block px-1.5 py-0.5 text-[11px] font-mono font-bold bg-slate-950/20 rounded text-slate-950">ESPACE</kbd>
+          </button>
+
+          <!-- Slide Précédente -->
+          <button
+            id="btnPrevSlide"
+            type="button"
+            title="Slide précédente (Flèche Gauche ←)"
+            class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition active:scale-95 cursor-pointer"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+
+          <!-- Slide Suivante (Flèche Droite →) -->
+          <button
+            id="btnNextSlide"
+            type="button"
+            title="Passer à la slide suivante et synchroniser l'écran casté (Flèche Droite →)"
+            class="px-3.5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-sm sm:text-base flex items-center gap-1.5 shadow-lg shadow-sky-500/20 transition active:scale-95 cursor-pointer"
+          >
+            <span>Suivante</span>
+            <kbd class="hidden md:inline-block px-1.5 py-0.5 text-[11px] font-mono font-bold bg-slate-950/20 rounded text-slate-950">→</kbd>
+          </button>
+
+          <!-- Réinitialiser -->
+          <button
+            id="btnReset"
+            type="button"
+            title="Réinitialiser tout le prompteur et revenir à la Slide 1 (Raccourci : R)"
+            class="p-2.5 rounded-xl bg-slate-800 hover:bg-rose-950/80 hover:text-rose-300 hover:border-rose-800 text-slate-300 border border-slate-700 transition active:scale-95 cursor-pointer"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Ligne 2 : Sélecteur de Slide, Écran Casté, Sous-titres ON/OFF, Charger .txt, Taille Police & Vitesse -->
+      <div class="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-800/70 text-xs sm:text-sm">
+
+        <!-- Sélecteur déroulant des slides -->
+        <div class="flex items-center gap-2 flex-1 min-w-[200px] max-w-lg">
+          <label for="slideSelector" class="text-slate-400 font-semibold whitespace-nowrap hidden sm:inline">Aller à :</label>
+          <select
+            id="slideSelector"
+            class="w-full bg-slate-900 border border-slate-700 hover:border-slate-600 text-slate-100 rounded-lg px-2.5 py-1.5 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+          ></select>
+        </div>
+
+        <!-- Réglages Écran Casté, Sous-titres ON/OFF, Fichier .txt, Taille Police & Vitesse -->
+        <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+
+          <!-- Bouton Synchronisation Écran Casté (ecran_slides.html) -->
+          <button
+            id="btnOpenJuryScreen"
+            type="button"
+            title="Ouvrir la fenêtre des diapositives (ecran_slides.html) à glisser sur l'écran Casté"
+            class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold flex items-center gap-2 transition cursor-pointer"
+          >
+            <span id="jurySyncDot" class="w-2 h-2 rounded-full bg-slate-500 transition-colors"></span>
+            <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            <span id="jurySyncLabel" class="whitespace-nowrap">Écran Casté</span>
+          </button>
+
+          <!-- Bouton Sous-titres (ON / OFF) synchronisé dans les deux sens avec ecran_slides.html -->
+          <button
+            id="btnToggleSubtitles"
+            type="button"
+            title="Afficher ou masquer instantanément les sous-titres sur ecran_slides.html (synchronisé avec la touche S sur l'écran casté)"
+            class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-sky-500/40 text-slate-200 font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+          >
+            <svg class="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h6m-8 8h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span class="whitespace-nowrap">Sous-titres</span>
+            <span
+              id="subtitlesStateBadge"
+              class="px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold bg-sky-500/20 text-sky-300 border border-sky-400/40"
+            >ON</span>
+          </button>
+
+          <!-- Bouton Charger / Exporter script.txt -->
+          <div class="flex items-center gap-1">
+            <label
+              for="txtFileInput"
+              title="Charger un fichier .txt (format : === SLIDE N | PARTIE | TITRE DE LA SLIDE ===, horodatage MM:SS calculé automatiquement)"
+              class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span id="scriptSourceLabel" class="whitespace-nowrap">Charger .txt</span>
+            </label>
+            <button
+              id="btnExportTxt"
+              type="button"
+              title="Exporter le script avec les en-têtes === SLIDE N | MM:SS - MM:SS | PARTIE | TITRE === calculés automatiquement"
+              class="px-2 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-sky-300 font-semibold flex items-center gap-1 transition cursor-pointer"
+            >
+              <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              <span class="hidden xl:inline whitespace-nowrap">Exporter .txt</span>
+            </button>
+          </div>
+          <input id="txtFileInput" type="file" accept=".txt,text/plain" class="hidden" />
+
+          <!-- Taille de police -->
+          <div class="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5" title="Taille du texte du prompteur">
+            <button
+              id="btnFontDec"
+              type="button"
+              class="px-2 py-1 rounded-md hover:bg-slate-800 text-slate-200 font-bold transition cursor-pointer"
+              aria-label="Réduire la taille de police"
+            >A-</button>
+            <span id="fontSizeLabel" class="px-1.5 font-mono text-xs text-sky-300 font-semibold">34px</span>
+            <button
+              id="btnFontInc"
+              type="button"
+              class="px-2 py-1 rounded-md hover:bg-slate-800 text-slate-200 font-bold transition cursor-pointer"
+              aria-label="Augmenter la taille de police"
+            >A+</button>
+          </div>
+
+          <!-- Vitesse de lecture -->
+          <div class="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5" title="Vitesse de lecture du texte (0.80x à 1.70x — n'affecte pas les pauses de ponctuation)">
+            <button
+              id="btnSpeedDec"
+              type="button"
+              class="px-2 py-1 rounded-md hover:bg-slate-800 text-slate-300 font-bold transition cursor-pointer"
+              aria-label="Ralentir la lecture"
+            >-</button>
+            <span id="speedLabel" class="px-1.5 font-mono text-xs text-amber-300 font-semibold">1.00x</span>
+            <button
+              id="btnSpeedInc"
+              type="button"
+              class="px-2 py-1 rounded-md hover:bg-slate-800 text-slate-300 font-bold transition cursor-pointer"
+              aria-label="Accélérer la lecture"
+            >+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Overlay visuel lors du glisser-déposer d'un fichier .txt -->
+  <div id="dropOverlay" class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md border-4 border-dashed border-sky-400 flex items-center justify-center pointer-events-none opacity-0">
+    <div class="text-center p-8 rounded-3xl bg-slate-900/90 border border-sky-500/40 shadow-2xl">
+      <p class="text-2xl font-extrabold text-white mb-2">Déposez votre fichier <span class="text-sky-400">script.txt</span></p>
+      <p class="text-slate-400 text-sm">Le texte et la répartition automatique des chronos seront mis à jour immédiatement.</p>
+    </div>
+  </div>
+
+  <!-- Notification flottante discrète -->
+  <div id="toastBanner" class="fixed bottom-6 right-6 z-50 pointer-events-none opacity-0 translate-y-3 transition-all duration-300">
+    <div class="bg-slate-900/95 border border-sky-500/40 text-slate-100 px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2.5 text-sm font-medium backdrop-blur-md">
+      <span class="w-2 h-2 rounded-full bg-sky-400"></span>
+      <span id="toastMessage">Message</span>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- ZONE PRINCIPALE DU PROMPTEUR : EN-TÊTE DE SLIDE & BULLET POINTS        -->
+  <!-- ===================================================================== -->
+  <main id="mainContent" class="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-8 pt-36 pb-[45vh]">
+
+    <!-- En-tête de la slide active -->
+    <section class="mb-8 bg-gradient-to-r from-slate-900/90 via-slate-900/70 to-slate-900/40 border border-slate-800/90 rounded-2xl p-5 sm:p-6 shadow-xl">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <span id="slidePartBadge" class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs sm:text-sm font-bold tracking-wide bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          PARTIE 1 : INTRODUCTION
+        </span>
+        <span id="slideTimeWindow" class="font-mono text-xs sm:text-sm text-slate-400 bg-slate-950/80 px-3 py-1 rounded-lg border border-slate-800">
+          Horodatage prévu : 00:00 — 01:05
+        </span>
+      </div>
+      <h1 id="slideTitleHeading" class="text-xl sm:text-2xl md:text-3xl font-extrabold text-white tracking-tight">
+        NAVIGUER DANS L'INCERTITUDE
+      </h1>
+    </section>
+
+    <!-- Conteneur dynamique des Bullet Points de la slide -->
+    <section id="bulletsContainer" class="flex flex-col gap-5 sm:gap-6" aria-live="polite">
+      <!-- Généré dynamiquement par JavaScript -->
+    </section>
+
+    <!-- Pied de slide : Invite visuelle pour les raccourcis clavier -->
+    <div id="slideFooterCue" class="mt-10 flex flex-col sm:flex-row items-center justify-between gap-4 p-5 rounded-2xl bg-slate-900/70 border border-slate-800">
+      <div class="text-sm text-slate-400">
+        <span class="text-slate-200 font-semibold">Astuce :</span> Appuyez sur <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-slate-200 font-mono text-xs">Espace</kbd> pour mettre en pause / reprendre le chronomètre, et sur <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-slate-200 font-mono text-xs">→</kbd> pour passer à la slide suivante (<code class="text-sky-300">slides/</code>).
+      </div>
+      <button
+        id="btnFooterNext"
+        type="button"
+        class="px-5 py-3 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/40 text-sky-300 font-bold text-sm sm:text-base flex items-center gap-2 transition cursor-pointer"
+      >
+        <span id="footerNextLabel">Passer à la Slide 2 (→)</span>
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+        </svg>
+      </button>
+    </div>
+
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- LOGIQUE JAVASCRIPT DU PROMPTEUR + SYNCHRONISATION ÉCRAN CASTÉ         -->
+  <!-- ===================================================================== -->
+  <script>
+    /**
+     * DONNÉES INTÉGRÉES PAR DÉFAUT DES 5 SLIDES (Gestion Stratégique des Risques)
+     * (Surchargées automatiquement si script.txt est présent ou chargé)
+     */
+    const DEFAULT_SLIDES_DATA = [
+      {
+        id: 1,
+        part: "PARTIE 1 : INTRODUCTION",
+        title: "NAVIGUER DANS L'INCERTITUDE",
+        globalStart: 0,
+        globalEnd: 65,
+        lines: [
+          { start: 0, end: 12.69, isPause: false, text: "Bienvenue à tous ! Aujourd'hui, nous abordons un sujet capital pour toute organisation : la gestion stratégique des risques..." },
+          { start: 12.69, end: 36.35, isPause: false, text: "Comment naviguer sereinement dans un monde imprévisible ? Contrairement aux idées reçues, gérer le risque ne signifie pas vivre dans la peur ; il s'agit d'anticipation : anticiper l'incertain pour transformer des menaces potentielles en véritables opportunités stratégiques !" },
+          { start: 36.35, end: 65, isPause: false, text: "Notre démarche s'articule autour de trois piliers fondamentaux : d'abord, protéger les actifs de l'entreprise — qu'ils soient physiques, financiers ou humains ; ensuite, optimiser la prise de décision en réduisant l'incertitude stratégique ; et enfin, stimuler la croissance en sachant détecter les opportunités émergentes nées de la perturbation !" }
+        ]
+      },
+      {
+        id: 2,
+        part: "PARTIE 2 : FONDEMENTS",
+        title: "L'ÉQUATION DU RISQUE ET SES LEVIERS",
+        globalStart: 65,
+        globalEnd: 149,
+        lines: [
+          { start: 65, end: 72.46, isPause: false, text: "Pour bien décider, il faut d'abord comprendre l'anatomie même du risque !" },
+          { start: 72.46, end: 83.27, isPause: false, text: "Regardons l'équation fondamentale : le risque naît de la rencontre entre une imprévisibilité et un préjudice potentiel." },
+          { start: 83.27, end: 103.53, isPause: false, text: "Mais d'où viennent ces périls ? Ils peuvent être endogènes –  c'est-à-dire issus de nos processus internes ou de notre propre culture organisationnelle ; ou exogènes, dictés par l'économie, le climat ou les ruptures technologiques !" },
+          { start: 103.53, end: 109.61, isPause: false, text: "Face à cela, deux leviers majeurs s'offrent à nous..." },
+          { start: 109.61, end: 128.17, isPause: false, text: "Le premier, c'est la prévention : son objectif est d'agir sur la fréquence, pour éviter ou diminuer la probabilité d'occurrence du risque ; comme le geste simple de se laver les mains pour stopper une épidémie." },
+          { start: 128.17, end: 139.64, isPause: false, text: "Le second levier, c'est la précaution : ici, on agit sur la gravité pour atténuer l'impact si l'événement survient !" },
+          { start: 139.64, end: 149, isPause: false, text: "Pensez au port de la ceinture de sécurité en voiture, ou à la diversification d'un portefeuille d'actifs financiers." }
+        ]
+      },
+      {
+        id: 3,
+        part: "PARTIE 3 : GOUVERNANCE",
+        title: "LE PROCESSUS DE TOLÉRANCE AUX RISQUES",
+        globalStart: 149,
+        globalEnd: 225,
+        lines: [
+          { start: 149, end: 154.78, isPause: false, text: "Comment fixer nos limites sans paralyser l'entreprise ?" },
+          { start: 154.78, end: 174.72, isPause: false, text: "C'est tout l'enjeu de la tolérance aux risques ! Le processus commence par la définition claire de nos objectifs et contraintes stratégiques ; puis vient la cartographie précise des périls financiers, opérationnels et réputationnels." },
+          { start: 174.72, end: 205.33, isPause: false, text: "Ensuite, nous évaluons notre appétence pour formaliser des seuils d'alerte et des critères d'action immédiate. Observez cette jauge de tolérance : à la base se trouve notre capacité — c'est-à-dire la prise de risque minimale liée aux rendements de base ; vient ensuite l'appétence cible, cette zone idéale où le risque est accepté et optimisé pour stimuler la croissance !" },
+          { start: 205.33, end: 225, isPause: false, text: "Mais attention : si nous franchissons le seuil de tolérance, nous entrons en zone d'alerte exigeant une action corrective ; au-delà se dresse le danger critique, dont les conséquences deviennent inacceptables pour la survie de l'organisation !" }
+        ]
+      },
+      {
+        id: 4,
+        part: "PARTIE 4 : CULTURE",
+        title: "LA CULTURE DU RISQUE COMME LEVIER STRATÉGIQUE",
+        globalStart: 225,
+        globalEnd: 291,
+        lines: [
+          { start: 225, end: 233.75, isPause: false, text: "Aucun outil, aucun ratio ne peut protéger une entreprise si la culture humaine ne suit pas !" },
+          { start: 233.75, end: 244.49, isPause: false, text: "Face aux résistances au changement et au mur des habitudes, la culture du risque constitue notre levier le plus puissant." },
+          { start: 244.49, end: 259.32, isPause: false, text: "Dans un environnement VUCA — Volatile, Incertain, Complexe et Ambigu —, nous devons développer une véritable résilience collective pour absorber les chocs et rebondir !" },
+          { start: 259.32, end: 291, isPause: false, text: "Et cette culture repose sur quatre piliers indissociables : la transparence d'abord, en instaurant le zéro tabou où le risque n'est pas vu comme un échec mais comme une information vitale ; l'incitation ensuite, pour récompenser la remontée d'alertes du terrain ; l'exemplarité du top management, qui alloue visiblement les ressources ; et enfin la sécurité psychologique qui libère la parole !" }
+        ]
+      },
+      {
+        id: 5,
+        part: "PARTIE 5 : CADRE DU PILOTAGE",
+        title: "LE RÉFÉRENTIEL COSO 2 ET L'APPROCHE INTÉGRÉE",
+        globalStart: 291,
+        globalEnd: 374,
+        lines: [
+          { start: 291, end: 309.19, isPause: false, text: "Pour structurer cette vision au quotidien, nous nous appuyons sur le référentiel international COSO 2 ! Ce cadre d'approche intégrée fait le pont entre l'abstraction du risque et le pilotage concret de l'entreprise." },
+          { start: 309.19, end: 329.05, isPause: false, text: "Il déploie huit composantes interconnectées : d'abord le socle de l'environnement interne et de la gouvernance ; suivis de la fixation des objectifs stratégiques et de l'identification des événements qui sépare les menaces des opportunités." },
+          { start: 329.05, end: 343.78, isPause: false, text: "Viennent ensuite l'évaluation des risques en probabilité et impact, puis le traitement — qu'il s'agisse d'éviter, de réduire, de transférer ou d'accepter le risque !" },
+          { start: 343.78, end: 359.2, isPause: false, text: "Enfin, les activités de contrôle, la fluidité de l'information et de la communication, ainsi que le pilotage continu garantissent la surveillance et l'amélioration du système." },
+          { start: 359.2, end: 374, isPause: false, text: "Le COSO 2 nous le prouve : le contrôle interne ne cherche pas un impossible « risque zéro », mais construit une résilience organisationnelle dynamique où chaque acteur connaît son rôle !" }
+        ]
+      }
+    ];
+
+    let BASE_SLIDES_DATA = JSON.parse(JSON.stringify(DEFAULT_SLIDES_DATA));
+    let SLIDES_DATA = JSON.parse(JSON.stringify(DEFAULT_SLIDES_DATA));
+    const STORAGE_KEY_SCRIPT = 'prompter_custom_script';
+    const STORAGE_KEY_SYNC = 'prompter_sync_state_v1';
+    const STORAGE_KEY_SUBTITLES_CFG = 'prompter_subtitles_cfg_v1';
+    const SYNC_CHANNEL_NAME = 'prompter_sync_v1';
+
+    function getTotalPresentationSeconds() {
+      if (!SLIDES_DATA.length) return 374;
+      return SLIDES_DATA[SLIDES_DATA.length - 1].globalEnd;
+    }
+
+    /**
+     * =========================================================================
+     * PARAMÉTRAGE FACILE DES TEMPS DE PAUSE (EN SECONDES)
+     * Modifiez librement ces valeurs pour ajuster la durée de chaque pause :
+     * =========================================================================
+     */
+    const PAUSE_DURATIONS = {
+      doubleDash: 0.50,    // '--'  : Pause courte explicite dans le texte (0,50 s)
+      comma: 0.50,         // ','   : Virgule (0,50 s)
+      semicolon: 0.75,     // ';'   : Point-virgule (0,75 s)
+      colon: 0.75,         // ':'   : Deux-points (0,75 s)
+      period: 1.00,        // '.'   : Point (1,00 s)
+      question: 1.00,      // '?'   : Point d'interrogation (1,00 s)
+      exclamation: 1.00,   // '!'   : Point d'exclamation (1,00 s)
+      ellipsis: 1.50,      // '...' ou '…' : Points de suspension (1,50 s)
+      newParagraph: 2.00   // Nouveau paragraphe (2,00 s)
+    };
+
+    const PAUSE_LABELS = {
+      doubleDash: 'Pause courte (--)',
+      comma: 'Virgule (,)',
+      semicolon: 'Point-virgule (;)',
+      colon: 'Deux-points (:)',
+      period: 'Point (.)',
+      question: "Point d'interrogation (?)",
+      exclamation: "Point d'exclamation (!)",
+      ellipsis: 'Points de suspension (...)',
+      newParagraph: 'Nouveau paragraphe (¶)'
+    };
+
+    const DEFAULT_CHARS_PER_SEC = 14.5;
+    const MIN_PLAYBACK_SPEED = 0.80;
+    const MAX_PLAYBACK_SPEED = 1.70;
+
+    /**
+     * DÉTECTION ET ANALYSE DES SYMBOLES DE PONCTUATION ET PAUSES '--'
+     */
+    const INLINE_PAUSE_TOKEN_REGEX = /(\s*(?<!-)--(?!-)\s*|\.\.\.|…|,(?!\d)|\.(?!\d)|;|:(?!\d)|\?|!)/;
+
+    function classifyPauseToken(rawToken) {
+      if (!rawToken) return null;
+      const trimmed = rawToken.trim();
+      if (trimmed === '--') {
+        return {
+          key: 'doubleDash',
+          display: '--',
+          label: PAUSE_LABELS.doubleDash,
+          duration: Number(PAUSE_DURATIONS.doubleDash) || 0.50,
+          isDash: true
+        };
+      }
+      if (trimmed === '...' || trimmed === '…') {
+        return {
+          key: 'ellipsis',
+          display: trimmed,
+          label: PAUSE_LABELS.ellipsis,
+          duration: Number(PAUSE_DURATIONS.ellipsis) || 1.50,
+          isDash: false
+        };
+      }
+      if (trimmed === ',') {
+        return {
+          key: 'comma',
+          display: ',',
+          label: PAUSE_LABELS.comma,
+          duration: Number(PAUSE_DURATIONS.comma) || 0.50,
+          isDash: false
+        };
+      }
+      if (trimmed === ';') {
+        return {
+          key: 'semicolon',
+          display: ';',
+          label: PAUSE_LABELS.semicolon,
+          duration: Number(PAUSE_DURATIONS.semicolon) || 0.75,
+          isDash: false
+        };
+      }
+      if (trimmed === ':') {
+        return {
+          key: 'colon',
+          display: ':',
+          label: PAUSE_LABELS.colon,
+          duration: Number(PAUSE_DURATIONS.colon) || 0.75,
+          isDash: false
+        };
+      }
+      if (trimmed === '.') {
+        return {
+          key: 'period',
+          display: '.',
+          label: PAUSE_LABELS.period,
+          duration: Number(PAUSE_DURATIONS.period) || 1.00,
+          isDash: false
+        };
+      }
+      if (trimmed === '?') {
+        return {
+          key: 'question',
+          display: '?',
+          label: PAUSE_LABELS.question,
+          duration: Number(PAUSE_DURATIONS.question) || 1.00,
+          isDash: false
+        };
+      }
+      if (trimmed === '!') {
+        return {
+          key: 'exclamation',
+          display: '!',
+          label: PAUSE_LABELS.exclamation,
+          duration: Number(PAUSE_DURATIONS.exclamation) || 1.00,
+          isDash: false
+        };
+      }
+      return null;
+    }
+
+    function analyzeLinePauses(text, options = {}) {
+      const { ignoreTrailingPunctuation = false } = options;
+      const parts = (text || '').split(INLINE_PAUSE_TOKEN_REGEX).filter(Boolean);
+      const rawTokens = parts.map((part) => {
+        const meta = classifyPauseToken(part);
+        if (meta) {
+          return { type: 'pause', meta, raw: part };
+        }
+        return { type: 'text', text: part };
+      });
+
+      for (let i = 0; i < rawTokens.length; i++) {
+        if (rawTokens[i].type !== 'pause') continue;
+        for (let j = i + 1; j < rawTokens.length; j++) {
+          const nxt = rawTokens[j];
+          if (nxt.type === 'text') {
+            if (/^[\s»"”’')\]]*$/.test(nxt.text)) {
+              continue;
+            }
+            break;
+          }
+          if (nxt.type === 'pause') {
+            rawTokens[i] = { type: 'text', text: rawTokens[i].raw };
+          }
+          break;
+        }
+      }
+
+      if (ignoreTrailingPunctuation && rawTokens.length > 0) {
+        for (let i = rawTokens.length - 1; i >= 0; i--) {
+          const tok = rawTokens[i];
+          if (tok.type === 'text') {
+            if (/^[\s»"”’')\]]*$/.test(tok.text)) {
+              continue;
+            }
+            break;
+          }
+          if (tok.type === 'pause' && tok.meta.key !== 'doubleDash') {
+            rawTokens[i] = { type: 'text', text: tok.raw };
+          }
+          break;
+        }
+      }
+
+      const tokens = [];
+      let totalPauseDuration = 0;
+      const cleanTextParts = [];
+
+      rawTokens.forEach((tok) => {
+        if (tok.type === 'pause') {
+          tokens.push(tok);
+          totalPauseDuration += tok.meta.duration;
+        } else {
+          if (tokens.length > 0 && tokens[tokens.length - 1].type === 'text') {
+            tokens[tokens.length - 1].text += tok.text;
+          } else {
+            tokens.push({ type: 'text', text: tok.text });
+          }
+        }
+      });
+
+      tokens.forEach((tok) => {
+        if (tok.type === 'text') {
+          cleanTextParts.push(tok.text);
+        }
+      });
+
+      const cleanText = cleanTextParts.join(' ').replace(/\s+/g, ' ').trim();
+      return {
+        tokens,
+        totalPauseDuration,
+        cleanText
+      };
+    }
+
+    /**
+     * RECALCUL DYNAMIQUE DES DURÉES SELON LA VITESSE DE LECTURE (state.playbackSpeed)
+     */
+    function recomputeSlidesForPlaybackSpeed(speed = 1.0) {
+      const safeSpeed = Math.max(MIN_PLAYBACK_SPEED, Math.min(MAX_PLAYBACK_SPEED, Number(speed) || 1.0));
+      let runningGlobalClock = 0;
+
+      SLIDES_DATA = BASE_SLIDES_DATA.map((baseSlide) => {
+        const slideGlobalStart = runningGlobalClock;
+        let lineCursor = slideGlobalStart;
+
+        const computedLines = baseSlide.lines.map((baseLine, lineIdx) => {
+          const baseLineDuration = Math.max(0.1, baseLine.end - baseLine.start);
+
+          if (baseLine.isPause) {
+            const start = lineCursor;
+            const end = start + baseLineDuration;
+            lineCursor = end;
+            return {
+              ...baseLine,
+              start,
+              end,
+              basePauseDuration: baseLineDuration,
+              baseSpeechDuration: 0
+            };
+          }
+
+          const nextLine = baseSlide.lines[lineIdx + 1];
+          const hasNewParagraphPause = Boolean(nextLine && !nextLine.isPause);
+          const rawNewParagraphDur = hasNewParagraphPause ? (Number(PAUSE_DURATIONS.newParagraph) || 2.00) : 0;
+          const analysis = analyzeLinePauses(baseLine.text, { ignoreTrailingPunctuation: hasNewParagraphPause });
+
+          const totalConfiguredPauseSec = analysis.totalPauseDuration + rawNewParagraphDur;
+          const basePauseScale = (totalConfiguredPauseSec > 0 && totalConfiguredPauseSec > baseLineDuration * 0.72)
+            ? (baseLineDuration * 0.72) / totalConfiguredPauseSec
+            : 1;
+
+          const fixedPauseDuration = totalConfiguredPauseSec * basePauseScale;
+          const baseSpeechDuration = Math.max(0.08, baseLineDuration - fixedPauseDuration);
+          const scaledSpeechDuration = baseSpeechDuration / safeSpeed;
+          const effectiveLineDuration = fixedPauseDuration + scaledSpeechDuration;
+
+          const start = lineCursor;
+          const end = start + effectiveLineDuration;
+          lineCursor = end;
+
+          return {
+            ...baseLine,
+            start,
+            end,
+            basePauseScale,
+            fixedPauseDuration,
+            baseSpeechDuration,
+            scaledSpeechDuration
+          };
+        });
+
+        const slideGlobalEnd = lineCursor;
+        runningGlobalClock = slideGlobalEnd;
+
+        return {
+          ...baseSlide,
+          globalStart: slideGlobalStart,
+          globalEnd: slideGlobalEnd,
+          lines: computedLines
+        };
+      });
+    }
+
+    /**
+     * PARSEUR DU FICHIER ÉDITABLE script.txt
+     */
+    function parseMMSS(str) {
+      const m = (str || '').trim().match(/^(\d{1,3}):(\d{2})$/);
+      if (!m) return null;
+      return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+    }
+
+    function parseSlideHeaderLine(line) {
+      const outer = line.match(/^===\s*(.+?)\s*===$/);
+      if (!outer) return null;
+
+      const segments = outer[1].split('|').map((s) => s.trim()).filter(Boolean);
+      if (segments.length < 2) return null;
+
+      const slideNumMatch = segments[0].match(/^SLIDE\s+(\d+)$/i);
+      if (!slideNumMatch) return null;
+
+      const id = parseInt(slideNumMatch[1], 10);
+      let explicitStart = null;
+      let explicitEnd = null;
+      let explicitDuration = null;
+      let part = '';
+      let title = '';
+
+      const rangeMatch = segments[1].match(/^(\d{1,3}:\d{2})\s*[-–→]\s*(\d{1,3}:\d{2})$/);
+      const singleDurMatch = segments[1].match(/^(\d{1,3}:\d{2})$/);
+
+      if (rangeMatch && segments.length >= 3) {
+        explicitStart = parseMMSS(rangeMatch[1]);
+        explicitEnd = parseMMSS(rangeMatch[2]);
+        if (segments.length >= 4) {
+          part = segments[2];
+          title = segments.slice(3).join(' | ');
+        } else {
+          part = `SLIDE ${id}`;
+          title = segments[2];
+        }
+      } else if (singleDurMatch && segments.length >= 3) {
+        explicitDuration = parseMMSS(singleDurMatch[1]);
+        if (segments.length >= 4) {
+          part = segments[2];
+          title = segments.slice(3).join(' | ');
+        } else {
+          part = `SLIDE ${id}`;
+          title = segments[2];
+        }
+      } else if (segments.length >= 3) {
+        part = segments[1];
+        title = segments.slice(2).join(' | ');
+      } else {
+        part = `SLIDE ${id}`;
+        title = segments[1];
+      }
+
+      return {
+        id,
+        part,
+        title,
+        explicitStart,
+        explicitEnd,
+        explicitDuration
+      };
+    }
+
+    function parseScriptText(rawText) {
+      const lines = rawText.replace(/\r\n/g, '\n').split('\n');
+      const parsedSlides = [];
+      let currentSlide = null;
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+
+        const headerInfo = parseSlideHeaderLine(line);
+        if (headerInfo) {
+          if (currentSlide && currentSlide.rawItems.length > 0) {
+            parsedSlides.push(currentSlide);
+          }
+          currentSlide = {
+            ...headerInfo,
+            rawItems: []
+          };
+          continue;
+        }
+
+        if (!currentSlide) continue;
+
+        const pauseMatch = line.match(/^\[PAUSE\s+([\d.,]+)\s*s?\]$/i);
+        if (pauseMatch) {
+          const pauseSec = Math.max(0.5, parseFloat(pauseMatch[1].replace(',', '.')) || 2);
+          currentSlide.rawItems.push({
+            isPause: true,
+            pauseDuration: pauseSec,
+            text: `(Pause : ${pauseSec} seconde${pauseSec > 1 ? 's' : ''})`
+          });
+        } else {
+          currentSlide.rawItems.push({
+            isPause: false,
+            text: line
+          });
+        }
+      }
+
+      if (currentSlide && currentSlide.rawItems.length > 0) {
+        parsedSlides.push(currentSlide);
+      }
+
+      if (parsedSlides.length === 0) return null;
+
+      let runningClock = 0;
+
+      return parsedSlides.map((slide, idx) => {
+        const itemEstimates = slide.rawItems.map((item, itemIdx) => {
+          if (item.isPause) {
+            return {
+              ...item,
+              estDuration: item.pauseDuration
+            };
+          }
+          const nextItem = slide.rawItems[itemIdx + 1];
+          const hasNewParagraphAfter = Boolean(nextItem && !nextItem.isPause);
+          const analysis = analyzeLinePauses(item.text, { ignoreTrailingPunctuation: hasNewParagraphAfter });
+          const speechSec = Math.max(0.6, analysis.cleanText.length / DEFAULT_CHARS_PER_SEC);
+          const newParagraphSec = hasNewParagraphAfter ? (Number(PAUSE_DURATIONS.newParagraph) || 2.00) : 0;
+
+          return {
+            ...item,
+            estDuration: speechSec + analysis.totalPauseDuration + newParagraphSec
+          };
+        });
+
+        const estimatedSlideTotal = itemEstimates.reduce((acc, it) => acc + it.estDuration, 0);
+
+        let globalStart;
+        let globalEnd;
+
+        if (slide.explicitStart !== null && slide.explicitEnd !== null && slide.explicitEnd > slide.explicitStart) {
+          globalStart = slide.explicitStart;
+          globalEnd = slide.explicitEnd;
+        } else if (slide.explicitDuration !== null && slide.explicitDuration > 0) {
+          globalStart = runningClock;
+          globalEnd = runningClock + slide.explicitDuration;
+        } else {
+          globalStart = runningClock;
+          const autoDuration = Math.max(5, Math.round(estimatedSlideTotal));
+          globalEnd = globalStart + autoDuration;
+        }
+
+        runningClock = globalEnd;
+
+        const totalSlideDur = Math.max(5, globalEnd - globalStart);
+        let explicitPauseTotal = 0;
+        let speechWeightTotal = 0;
+
+        itemEstimates.forEach((item) => {
+          if (item.isPause) {
+            explicitPauseTotal += item.estDuration;
+          } else {
+            speechWeightTotal += Math.max(0.6, item.estDuration);
+          }
+        });
+
+        const availableSpeechTime = Math.max(totalSlideDur * 0.35, totalSlideDur - explicitPauseTotal);
+        const pauseScale = explicitPauseTotal > totalSlideDur * 0.65
+          ? (totalSlideDur * 0.65) / explicitPauseTotal
+          : 1;
+
+        let cursor = globalStart;
+        const computedLines = itemEstimates.map((item, itemIdx) => {
+          let dur = 1;
+          if (item.isPause) {
+            dur = item.estDuration * pauseScale;
+          } else {
+            const weight = Math.max(0.6, item.estDuration);
+            dur = (weight / Math.max(0.1, speechWeightTotal)) * availableSpeechTime;
+          }
+          const start = cursor;
+          const end = itemIdx === itemEstimates.length - 1 ? globalEnd : cursor + dur;
+          cursor = end;
+          return {
+            start,
+            end,
+            isPause: item.isPause,
+            text: item.text
+          };
+        });
+
+        return {
+          id: slide.id || (idx + 1),
+          part: slide.part,
+          title: slide.title,
+          globalStart,
+          globalEnd,
+          lines: computedLines
+        };
+      });
+    }
+
+    /**
+     * GÉNÈRE LE TEXTE COMPLET AVEC EN-TÊTES CALCULÉS
+     */
+    function exportFormattedScriptWithTimestamps() {
+      const blocks = SLIDES_DATA.map((slide) => {
+        const header = `=== SLIDE ${slide.id} | ${formatMMSS(slide.globalStart)} - ${formatMMSS(slide.globalEnd)} | ${slide.part} | ${slide.title} ===`;
+        const bodyLines = slide.lines.map((line) => {
+          if (line.isPause) {
+            const dur = Math.round((line.end - line.start) * 10) / 10;
+            return `[PAUSE ${dur}s]`;
+          }
+          return line.text;
+        });
+        return [header, ...bodyLines].join('\n');
+      });
+
+      const output = blocks.join('\n\n') + '\n';
+      const blob = new Blob([output], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'script_horodate.txt';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Script exporté avec en-têtes === SLIDE N | MM:SS - MM:SS | PARTIE | TITRE ===');
+    }
+
+    /**
+     * DÉCOUPAGE DYNAMIQUE EN PHRASES DE SOUS-TITRES SYNCHRONISÉS
+     * Avec conservation des segments exacts (texte + pauses) pour animation caractère par caractère sur ecran_slides.html
+     */
+    function buildSlideSubtitleCues(renderedLines) {
+      const cues = [];
+
+      renderedLines.forEach((item) => {
+        if (item.isPause) {
+          cues.push({
+            isPauseBlock: true,
+            text: '',
+            segments: [],
+            speechStart: item.localStart,
+            speechEnd: item.localEnd,
+            displayStart: item.localStart,
+            displayEnd: item.localEnd
+          });
+          return;
+        }
+
+        let buffer = '';
+        let bufferStart = null;
+        let bufferEnd = null;
+        let cueSegments = [];
+
+        function appendTextPiece(ch, cStart, cEnd) {
+          const lastSeg = cueSegments[cueSegments.length - 1];
+          if (lastSeg && lastSeg.type === 'text') {
+            lastSeg.text += ch;
+            lastSeg.end = cEnd;
+          } else {
+            cueSegments.push({
+              type: 'text',
+              text: ch,
+              start: cStart,
+              end: cEnd
+            });
+          }
+        }
+
+        function flushBuffer() {
+          const clean = buffer.replace(/\s+/g, ' ').trim();
+          if (clean.length > 0 && bufferStart !== null) {
+            cues.push({
+              isPauseBlock: false,
+              text: clean,
+              segments: cueSegments,
+              speechStart: bufferStart,
+              speechEnd: bufferEnd !== null ? bufferEnd : bufferStart,
+              displayStart: bufferStart,
+              displayEnd: bufferEnd !== null ? bufferEnd : bufferStart
+            });
+          }
+          buffer = '';
+          bufferStart = null;
+          bufferEnd = null;
+          cueSegments = [];
+        }
+
+        item.segments.forEach((seg) => {
+          if (seg.type === 'pause') {
+            if (seg.isParagraphPause) {
+              flushBuffer();
+              return;
+            }
+
+            const labelEl = seg.badgeEl ? seg.badgeEl.querySelector('.inline-pause-label') : null;
+            const symbol = labelEl ? labelEl.textContent : '';
+            if (!symbol) return;
+
+            if (bufferStart === null) bufferStart = seg.start;
+            bufferEnd = seg.end;
+
+            const displaySymbol = (symbol === '--') ? ' -- ' : symbol;
+            buffer += displaySymbol;
+            cueSegments.push({
+              type: 'pause',
+              symbol: displaySymbol,
+              start: seg.start,
+              end: seg.end
+            });
+
+            const isStrongBreak = ['.', '?', '!', '...', '…', ';', ':', '--'].includes(symbol);
+            const isCommaBreak = symbol === ',' && buffer.trim().length >= 46;
+
+            if ((isStrongBreak && buffer.trim().length >= 10) || isCommaBreak) {
+              flushBuffer();
+            }
+          } else if (seg.type === 'text' && Array.isArray(seg.charSpans)) {
+            const totalChars = seg.charSpans.length;
+            if (totalChars === 0) return;
+
+            for (let c = 0; c < totalChars; c++) {
+              const ch = seg.charSpans[c].textContent || '';
+              const cStart = seg.start + (c / totalChars) * seg.duration;
+              const cEnd = seg.start + ((c + 1) / totalChars) * seg.duration;
+
+              if (buffer.length === 0 && /^\s$/.test(ch)) {
+                continue;
+              }
+
+              if (bufferStart === null) bufferStart = cStart;
+              bufferEnd = cEnd;
+              buffer += ch;
+              appendTextPiece(ch, cStart, cEnd);
+
+              if (buffer.length >= 85 && /^\s$/.test(ch)) {
+                flushBuffer();
+              }
+            }
+          }
+        });
+
+        flushBuffer();
+      });
+
+      for (let i = 0; i < cues.length; i++) {
+        const current = cues[i];
+        if (current.isPauseBlock) continue;
+
+        const next = cues[i + 1];
+        if (next) {
+          current.displayEnd = next.speechStart;
+        } else {
+          current.displayEnd = Infinity;
+        }
+      }
+
+      return cues;
+    }
+
+    function getActiveSubtitleText() {
+      const cues = state.subtitleCues || [];
+      if (!cues.length) return '';
+
+      const t = state.slideElapsed;
+
+      for (let i = 0; i < cues.length; i++) {
+        const cue = cues[i];
+        if (t >= cue.displayStart && t < cue.displayEnd) {
+          return cue.isPauseBlock ? '' : cue.text;
+        }
+      }
+
+      if (t < cues[0].displayStart) {
+        return cues[0].isPauseBlock ? '' : cues[0].text;
+      }
+
+      const last = cues[cues.length - 1];
+      return last.isPauseBlock ? '' : last.text;
+    }
+
+    /**
+     * ÉTAT GLOBAL DE L'APPLICATION
+     */
+    const state = {
+      currentSlideIndex: 0,      // Index 0..N-1
+      isRunning: false,          // Chronomètre actif ou en pause
+      globalElapsed: 0,          // Temps global écoulé en secondes (temps réel)
+      slideElapsed: 0,           // Temps local de la slide en cours (repart à 00:00 au changement de slide)
+      fontSize: 34,              // Taille de police par défaut (34px)
+      playbackSpeed: 1.0,        // Vitesse de lecture (0.80x à 1.70x)
+      lastFrameTime: null,       // Timestamp performance.now() de la frame précédente
+      renderedLines: [],         // Références DOM des lignes et spans .char de la slide active
+      subtitleCues: [],          // Segments de sous-titres synchronisés pour la slide active
+      subtitlesEnabled: true,    // État ON/OFF des sous-titres synchronisé avec ecran_slides.html
+      lastBroadcastSubtitle: null,
+      lastCenteredLineIdx: -1,   // Dernière ligne centrée automatiquement
+      juryWindowConnected: false,
+      juryWindowRef: null,
+      toastTimeout: null
+    };
+
+    /**
+     * RÉFÉRENCES DOM
+     */
+    const dom = {
+      topBar: document.getElementById('topBar'),
+      mainContent: document.getElementById('mainContent'),
+      globalTimerDisplay: document.getElementById('globalTimerDisplay'),
+      globalTotalDisplay: document.getElementById('globalTotalDisplay'),
+      globalPercent: document.getElementById('globalPercent'),
+      globalProgressBar: document.getElementById('globalProgressBar'),
+      slideTimerBox: document.getElementById('slideTimerBox'),
+      slideTimerLabel: document.getElementById('slideTimerLabel'),
+      slideTimerDisplay: document.getElementById('slideTimerDisplay'),
+      slideDurationDisplay: document.getElementById('slideDurationDisplay'),
+      slidePercent: document.getElementById('slidePercent'),
+      slideProgressBar: document.getElementById('slideProgressBar'),
+      deltaBox: document.getElementById('deltaBox'),
+      deltaValue: document.getElementById('deltaValue'),
+      deltaStatusText: document.getElementById('deltaStatusText'),
+      btnPlayPause: document.getElementById('btnPlayPause'),
+      iconPlay: document.getElementById('iconPlay'),
+      iconPause: document.getElementById('iconPause'),
+      playPauseText: document.getElementById('playPauseText'),
+      btnPrevSlide: document.getElementById('btnPrevSlide'),
+      btnNextSlide: document.getElementById('btnNextSlide'),
+      btnReset: document.getElementById('btnReset'),
+      slideSelector: document.getElementById('slideSelector'),
+      btnOpenJuryScreen: document.getElementById('btnOpenJuryScreen'),
+      jurySyncDot: document.getElementById('jurySyncDot'),
+      jurySyncLabel: document.getElementById('jurySyncLabel'),
+      btnToggleSubtitles: document.getElementById('btnToggleSubtitles'),
+      subtitlesStateBadge: document.getElementById('subtitlesStateBadge'),
+      txtFileInput: document.getElementById('txtFileInput'),
+      btnExportTxt: document.getElementById('btnExportTxt'),
+      scriptSourceLabel: document.getElementById('scriptSourceLabel'),
+      dropOverlay: document.getElementById('dropOverlay'),
+      btnFontDec: document.getElementById('btnFontDec'),
+      btnFontInc: document.getElementById('btnFontInc'),
+      fontSizeLabel: document.getElementById('fontSizeLabel'),
+      btnSpeedDec: document.getElementById('btnSpeedDec'),
+      btnSpeedInc: document.getElementById('btnSpeedInc'),
+      speedLabel: document.getElementById('speedLabel'),
+      slidePartBadge: document.getElementById('slidePartBadge'),
+      slideTimeWindow: document.getElementById('slideTimeWindow'),
+      slideTitleHeading: document.getElementById('slideTitleHeading'),
+      bulletsContainer: document.getElementById('bulletsContainer'),
+      btnFooterNext: document.getElementById('btnFooterNext'),
+      footerNextLabel: document.getElementById('footerNextLabel'),
+      toastBanner: document.getElementById('toastBanner'),
+      toastMessage: document.getElementById('toastMessage')
+    };
+
+    /**
+     * CANAL DE SYNCHRONISATION TEMPS RÉEL AVEC ecran_slides.html (ÉCRAN CASTÉ)
+     */
+    const syncChannel = ('BroadcastChannel' in window)
+      ? new BroadcastChannel(SYNC_CHANNEL_NAME)
+      : null;
+
+    function loadPrompterSubtitleState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_SUBTITLES_CFG);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (typeof parsed.enabled === 'boolean') {
+            state.subtitlesEnabled = parsed.enabled;
+          }
+        }
+      } catch (e) {
+        // Ignore
+      }
+      updateSubtitleToggleButtonUI();
+    }
+
+    function savePrompterSubtitleState(enabled) {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_SUBTITLES_CFG);
+        const parsed = raw ? JSON.parse(raw) : {};
+        parsed.enabled = Boolean(enabled);
+        localStorage.setItem(STORAGE_KEY_SUBTITLES_CFG, JSON.stringify(parsed));
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    function updateSubtitleToggleButtonUI() {
+      if (!dom.btnToggleSubtitles || !dom.subtitlesStateBadge) return;
+      if (state.subtitlesEnabled) {
+        dom.btnToggleSubtitles.classList.add('border-sky-500/40');
+        dom.btnToggleSubtitles.classList.remove('border-slate-700', 'text-slate-400');
+        dom.btnToggleSubtitles.classList.add('text-slate-200');
+        dom.subtitlesStateBadge.textContent = 'ON';
+        dom.subtitlesStateBadge.className = 'px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold bg-sky-500/20 text-sky-300 border border-sky-400/40';
+      } else {
+        dom.btnToggleSubtitles.classList.remove('border-sky-500/40', 'text-slate-200');
+        dom.btnToggleSubtitles.classList.add('border-slate-700', 'text-slate-400');
+        dom.subtitlesStateBadge.textContent = 'OFF';
+        dom.subtitlesStateBadge.className = 'px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold bg-slate-800 text-slate-400 border border-slate-700';
+      }
+    }
+
+    function togglePrompterSubtitles() {
+      state.subtitlesEnabled = !state.subtitlesEnabled;
+      updateSubtitleToggleButtonUI();
+      savePrompterSubtitleState(state.subtitlesEnabled);
+
+      if (syncChannel) {
+        try {
+          syncChannel.postMessage({
+            type: 'SUBTITLE_VISIBILITY',
+            enabled: state.subtitlesEnabled,
+            timestamp: Date.now()
+          });
+        } catch (err) {
+          // Ignore
+        }
+      }
+
+      showToast(
+        state.subtitlesEnabled
+          ? 'Sous-titres activés sur l’écran casté (ON)'
+          : 'Sous-titres masqués sur l’écran casté (OFF)'
+      );
+    }
+
+    function setJuryConnectedUI(connected) {
+      state.juryWindowConnected = connected;
+      if (connected) {
+        dom.jurySyncDot.className = 'w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.85)] transition-colors';
+        dom.jurySyncLabel.textContent = 'Écran Casté synchronisé';
+        dom.btnOpenJuryScreen.classList.add('border-emerald-500/40');
+      } else {
+        dom.jurySyncDot.className = 'w-2 h-2 rounded-full bg-slate-500 transition-colors';
+        dom.jurySyncLabel.textContent = 'Écran Casté';
+        dom.btnOpenJuryScreen.classList.remove('border-emerald-500/40');
+      }
+    }
+
+    function broadcastSlideState(eventType = 'SLIDE_CHANGE') {
+      const slide = SLIDES_DATA[state.currentSlideIndex] || SLIDES_DATA[0];
+      const activeSub = getActiveSubtitleText();
+      state.lastBroadcastSubtitle = activeSub;
+
+      const includeCues = (eventType === 'SLIDE_CHANGE' || eventType === 'SYNC_STATE');
+
+      const payload = {
+        type: eventType,
+        slideIndex: state.currentSlideIndex,
+        slideId: slide.id,
+        totalSlides: SLIDES_DATA.length,
+        slideTitle: slide.title,
+        slidePart: slide.part,
+        isRunning: state.isRunning,
+        globalElapsed: state.globalElapsed,
+        slideElapsed: state.slideElapsed,
+        playbackSpeed: state.playbackSpeed,
+        totalSeconds: getTotalPresentationSeconds(),
+        subtitleText: activeSub,
+        subtitleEnabled: state.subtitlesEnabled,
+        timestamp: Date.now()
+      };
+
+      if (includeCues) {
+        payload.subtitleCues = state.subtitleCues;
+      }
+
+      if (syncChannel) {
+        try {
+          syncChannel.postMessage(payload);
+        } catch (err) {
+          // Ignore si fermé
+        }
+      }
+
+      try {
+        const storagePayload = { ...payload, subtitleCues: state.subtitleCues };
+        localStorage.setItem(STORAGE_KEY_SYNC, JSON.stringify(storagePayload));
+      } catch (err) {
+        // Ignore si stockage bloqué
+      }
+    }
+
+    if (syncChannel) {
+      syncChannel.onmessage = (event) => {
+        const msg = event.data;
+        if (!msg || typeof msg !== 'object') return;
+
+        if (msg.type === 'JURY_SCREEN_READY' || msg.type === 'REQUEST_SYNC') {
+          setJuryConnectedUI(true);
+          broadcastSlideState('SYNC_STATE');
+        } else if (msg.type === 'JURY_SCREEN_CLOSED') {
+          setJuryConnectedUI(false);
+        } else if (
+          (msg.type === 'SUBTITLE_VISIBILITY' || msg.type === 'SUBTITLES_STATE_CHANGED') &&
+          typeof msg.enabled === 'boolean'
+        ) {
+          state.subtitlesEnabled = msg.enabled;
+          updateSubtitleToggleButtonUI();
+        } else if (msg.type === 'COMMAND_NEXT_SLIDE') {
+          setJuryConnectedUI(true);
+          goToNextSlide();
+        } else if (msg.type === 'COMMAND_PREV_SLIDE') {
+          setJuryConnectedUI(true);
+          goToPrevSlide();
+        } else if (msg.type === 'COMMAND_RESET') {
+          setJuryConnectedUI(true);
+          resetPrompter();
+        }
+      };
+    }
+
+    window.addEventListener('storage', (e) => {
+      if (e.key === STORAGE_KEY_SUBTITLES_CFG && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (typeof parsed.enabled === 'boolean') {
+            state.subtitlesEnabled = parsed.enabled;
+            updateSubtitleToggleButtonUI();
+          }
+        } catch (err) {
+          // Ignore
+        }
+      }
+    });
+
+    function openJuryScreenWindow() {
+      const popup = window.open(
+        'ecran_slides.html',
+        'ecran_slides_jury_caste',
+        'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no'
+      );
+      if (popup) {
+        state.juryWindowRef = popup;
+        popup.focus();
+        setTimeout(() => broadcastSlideState('SYNC_STATE'), 250);
+        showToast('Fenêtre ecran_slides.html ouverte — glissez-la sur l’écran casté');
+      } else {
+        showToast('Autorisez les fenêtres pop-up ou ouvrez ecran_slides.html dans un nouvel onglet');
+      }
+    }
+
+    /**
+     * SYNCHRONISATION DU DÉCALAGE DE LA ZONE PRINCIPALE SOUS LA BARRE VERROUILLÉE
+     */
+    function syncTopBarOffset() {
+      if (!dom.topBar || !dom.mainContent) return;
+      const barHeight = dom.topBar.offsetHeight;
+      dom.mainContent.style.paddingTop = `${barHeight + 24}px`;
+      document.documentElement.style.scrollPaddingTop = `${barHeight + 24}px`;
+    }
+
+    /**
+     * CENTRAGE FLUIDE DANS LA ZONE VISIBLE SITUÉE SOUS LA BARRE SUPÉRIEURE VERROUILLÉE
+     */
+    function scrollElementToVisibleCenter(targetEl) {
+      if (!targetEl) return;
+      const headerHeight = dom.topBar ? dom.topBar.offsetHeight : 0;
+      const visibleHeight = Math.max(120, window.innerHeight - headerHeight);
+      const rect = targetEl.getBoundingClientRect();
+      const elementCenter = rect.top + rect.height / 2;
+      const targetViewportCenter = headerHeight + visibleHeight / 2;
+      const deltaY = elementCenter - targetViewportCenter;
+
+      if (Math.abs(deltaY) > 6) {
+        window.scrollBy({ top: deltaY, behavior: 'smooth' });
+      }
+    }
+
+    /**
+     * UTILITAIRES DE FORMATAGE TEMPOREL
+     */
+    function formatMMSS(totalSeconds) {
+      const clamped = Math.max(0, Math.floor(totalSeconds));
+      const mins = Math.floor(clamped / 60);
+      const secs = clamped % 60;
+      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function formatSignedDelta(deltaSeconds) {
+      const rounded = Math.round(deltaSeconds);
+      const sign = rounded >= 0 ? '+' : '-';
+      const absSec = Math.abs(rounded);
+      const mins = Math.floor(absSec / 60);
+      const secs = absSec % 60;
+      return `${sign}${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    /**
+     * AFFICHAGE D'UNE NOTIFICATION DISCRÈTE
+     */
+    function showToast(message) {
+      dom.toastMessage.textContent = message;
+      dom.toastBanner.classList.remove('opacity-0', 'translate-y-3');
+      dom.toastBanner.classList.add('opacity-100', 'translate-y-0');
+
+      if (state.toastTimeout) {
+        clearTimeout(state.toastTimeout);
+      }
+      state.toastTimeout = setTimeout(() => {
+        dom.toastBanner.classList.add('opacity-0', 'translate-y-3');
+        dom.toastBanner.classList.remove('opacity-100', 'translate-y-0');
+      }, 2400);
+    }
+
+    /**
+     * APPLICATION D'UN NOUVEAU SCRIPT .TXT
+     */
+    function applyCustomScript(rawText, sourceName = 'script.txt', silent = false) {
+      const parsed = parseScriptText(rawText);
+      if (!parsed || parsed.length === 0) {
+        if (!silent) showToast('Format .txt non reconnu (vérifiez les en-têtes === SLIDE N ===)');
+        return false;
+      }
+
+      BASE_SLIDES_DATA = parsed;
+      recomputeSlidesForPlaybackSpeed(state.playbackSpeed);
+
+      try {
+        localStorage.setItem(STORAGE_KEY_SCRIPT, rawText);
+      } catch (e) {
+        // Ignore
+      }
+
+      dom.scriptSourceLabel.textContent = sourceName.length > 18
+        ? `${sourceName.slice(0, 15)}…`
+        : sourceName;
+      dom.globalTotalDisplay.textContent = `/ ${formatMMSS(getTotalPresentationSeconds())}`;
+
+      state.currentSlideIndex = Math.min(state.currentSlideIndex, SLIDES_DATA.length - 1);
+      state.slideElapsed = 0;
+      populateSlideSelector();
+      renderSlide(state.currentSlideIndex);
+      broadcastSlideState('SYNC_STATE');
+
+      if (!silent) {
+        showToast(`Script chargé : ${SLIDES_DATA.length} slides (${sourceName})`);
+      }
+      return true;
+    }
+
+    async function tryAutoLoadScriptTxt() {
+      try {
+        const res = await fetch(`script.txt?t=${Date.now()}`, { cache: 'no-store' });
+        if (res.ok) {
+          const text = await res.text();
+          if (applyCustomScript(text, 'script.txt', true)) {
+            return;
+          }
+        }
+      } catch (e) {
+        // Ouverture directe file://
+      }
+
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY_SCRIPT);
+        if (saved) {
+          applyCustomScript(saved, 'Script mémorisé', true);
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    /**
+     * INITIALISATION DU SÉLECTEUR DÉROULANT DES SLIDES
+     */
+    function populateSlideSelector() {
+      const currentVal = String(state.currentSlideIndex);
+      dom.slideSelector.innerHTML = '';
+      SLIDES_DATA.forEach((slide, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = `${slide.title} (${formatMMSS(slide.globalStart)} → ${formatMMSS(slide.globalEnd)})`;
+        dom.slideSelector.appendChild(option);
+      });
+      dom.slideSelector.value = currentVal;
+    }
+
+    /**
+     * CONSTRUCTION DU DOM D'UNE SLIDE AVEC ENCAPSULATION MOT PAR MOT (.word),
+     * CARACTÈRE PAR CARACTÈRE (.char) ET TEMPORISATION DYNAMIQUE POST-PHRASE
+     */
+    function renderSlide(slideIndex) {
+      const slide = SLIDES_DATA[slideIndex];
+      const slideDuration = slide.globalEnd - slide.globalStart;
+
+      dom.globalTotalDisplay.textContent = `/ ${formatMMSS(getTotalPresentationSeconds())}`;
+      dom.slideSelector.value = slideIndex;
+      dom.slidePartBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span>${slide.part}`;
+      dom.slideTitleHeading.textContent = slide.title;
+      dom.slideTimeWindow.textContent = `Horodatage prévu : ${formatMMSS(slide.globalStart)} — ${formatMMSS(slide.globalEnd)} (${formatMMSS(slideDuration)})`;
+      dom.slideTimerLabel.textContent = `Slide ${slide.id} / ${SLIDES_DATA.length}`;
+      dom.slideDurationDisplay.textContent = `/ ${formatMMSS(slideDuration)}`;
+
+      if (slideIndex < SLIDES_DATA.length - 1) {
+        dom.footerNextLabel.textContent = `Passer à la Slide ${slide.id + 1} (→)`;
+        dom.btnFooterNext.classList.remove('opacity-50');
+      } else {
+        dom.footerNextLabel.textContent = `Fin du diaporama — Questions de l'auditoire`;
+        dom.btnFooterNext.classList.add('opacity-75');
+      }
+
+      dom.bulletsContainer.innerHTML = '';
+      state.renderedLines = [];
+      state.lastCenteredLineIdx = -1;
+
+      slide.lines.forEach((line, lineIdx) => {
+        const localStart = line.start - slide.globalStart;
+        const localEnd = line.end - slide.globalStart;
+        const duration = Math.max(0.1, localEnd - localStart);
+
+        if (line.isPause) {
+          const pauseWrapper = document.createElement('div');
+          pauseWrapper.className = 'pause-card rounded-2xl p-4 sm:p-5 flex flex-col gap-3 cursor-pointer select-none';
+          pauseWrapper.title = 'Cliquer pour démarrer à cette pause';
+
+          const topRow = document.createElement('div');
+          topRow.className = 'flex items-center justify-between gap-3';
+
+          const leftInfo = document.createElement('div');
+          leftInfo.className = 'flex items-center gap-3';
+          leftInfo.innerHTML = `
+            <span class="font-mono text-xs sm:text-sm font-bold px-2.5 py-1 rounded-lg bg-amber-400/15 text-amber-300 border border-amber-400/30">
+              ${formatMMSS(line.start)}
+            </span>
+            <span class="inline-flex items-center gap-2 text-amber-300 font-bold text-base sm:text-lg">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              ${line.text} — Respiration & Regard Audience
+            </span>
+          `;
+
+          const countdownBadge = document.createElement('span');
+          countdownBadge.className = 'font-mono text-sm sm:text-base font-extrabold text-amber-300 bg-slate-950/70 px-3 py-1 rounded-lg border border-amber-400/30';
+          countdownBadge.textContent = `${duration.toFixed(1)}s`;
+
+          topRow.appendChild(leftInfo);
+          topRow.appendChild(countdownBadge);
+
+          const gaugeTrack = document.createElement('div');
+          gaugeTrack.className = 'w-full h-2.5 bg-slate-950/90 rounded-full overflow-hidden border border-slate-800';
+
+          const gaugeFill = document.createElement('div');
+          gaugeFill.className = 'h-full bg-gradient-to-r from-amber-400 to-yellow-300 rounded-full transition-all duration-75';
+          gaugeFill.style.width = '0%';
+          gaugeTrack.appendChild(gaugeFill);
+
+          pauseWrapper.appendChild(topRow);
+          pauseWrapper.appendChild(gaugeTrack);
+
+          pauseWrapper.addEventListener('click', () => {
+            state.slideElapsed = localStart;
+            state.lastCenteredLineIdx = -1;
+            updateVisualFrame();
+            broadcastSlideState('SYNC_STATE');
+            showToast(`Positionné à ${formatMMSS(line.start)}`);
+          });
+
+          dom.bulletsContainer.appendChild(pauseWrapper);
+
+          state.renderedLines.push({
+            element: pauseWrapper,
+            isPause: true,
+            localStart,
+            localEnd,
+            duration,
+            gaugeFill,
+            countdownBadge,
+            charSpans: [],
+            lastHighlightedCount: -1
+          });
+
+        } else {
+          const nextLine = slide.lines[lineIdx + 1];
+          const hasNewParagraphPause = Boolean(nextLine && !nextLine.isPause);
+          const rawNewParagraphDur = hasNewParagraphPause ? (Number(PAUSE_DURATIONS.newParagraph) || 2.00) : 0;
+          const analysis = analyzeLinePauses(line.text, { ignoreTrailingPunctuation: hasNewParagraphPause });
+
+          const card = document.createElement('article');
+          card.className = 'bullet-card rounded-2xl p-5 sm:p-6 flex items-start gap-4 sm:gap-6 cursor-pointer';
+          card.title = 'Cliquer pour positionner la lecture sur ce paragraphe';
+
+          const timeCol = document.createElement('div');
+          timeCol.className = 'pt-1.5 flex flex-col items-center gap-1.5 shrink-0 min-w-[82px]';
+
+          const timeBadge = document.createElement('span');
+          timeBadge.className = 'w-full text-center font-mono text-xs sm:text-sm font-bold px-2.5 py-1 rounded-lg bg-slate-950/90 text-sky-400 border border-slate-800';
+          timeBadge.textContent = formatMMSS(line.start);
+          timeCol.appendChild(timeBadge);
+
+          const textContainer = document.createElement('p');
+          textContainer.className = 'teleprompter-text font-semibold leading-[1.58] tracking-[-0.01em] break-normal';
+          textContainer.style.fontSize = `${state.fontSize}px`;
+
+          const rawSegments = [];
+          let totalTextChars = 0;
+          let lastWordGroup = null;
+          let pendingSpaceSpan = null;
+
+          function createPauseBadgeElement(meta, extraClass = '') {
+            const badgeEl = document.createElement('span');
+            badgeEl.className = `inline-pause-token ${meta.isDash ? 'is-dash-token' : ''} ${extraClass}`.trim();
+            badgeEl.title = `${meta.label} — Pause : ${meta.duration.toFixed(2).replace('.', ',')} s (fixe)`;
+
+            const fillEl = document.createElement('span');
+            fillEl.className = 'inline-pause-fill';
+
+            const labelEl = document.createElement('span');
+            labelEl.className = 'inline-pause-label';
+            labelEl.textContent = meta.display;
+
+            badgeEl.appendChild(fillEl);
+            badgeEl.appendChild(labelEl);
+            return { badgeEl, fillEl };
+          }
+
+          analysis.tokens.forEach((tok) => {
+            if (tok.type === 'pause') {
+              const { badgeEl, fillEl } = createPauseBadgeElement(tok.meta);
+
+              if (!tok.meta.isDash && lastWordGroup) {
+                if (pendingSpaceSpan) {
+                  lastWordGroup.appendChild(pendingSpaceSpan);
+                  pendingSpaceSpan = null;
+                }
+                lastWordGroup.appendChild(badgeEl);
+              } else {
+                if (pendingSpaceSpan) {
+                  textContainer.appendChild(pendingSpaceSpan);
+                  pendingSpaceSpan = null;
+                }
+                textContainer.appendChild(badgeEl);
+                lastWordGroup = null;
+              }
+
+              rawSegments.push({
+                type: 'pause',
+                configuredDuration: tok.meta.duration,
+                badgeEl,
+                fillEl,
+                lastState: ''
+              });
+            } else {
+              const segCharSpans = [];
+              const subTokens = tok.text.split(/(\s+)/);
+
+              subTokens.forEach((sub) => {
+                if (sub.length === 0) return;
+
+                if (/^\s+$/.test(sub)) {
+                  if (pendingSpaceSpan) {
+                    textContainer.appendChild(pendingSpaceSpan);
+                    pendingSpaceSpan = null;
+                  }
+                  const spaceWrapper = document.createElement('span');
+                  for (const ch of sub) {
+                    const spaceSpan = document.createElement('span');
+                    spaceSpan.className = 'char';
+                    spaceSpan.textContent = ch;
+                    spaceWrapper.appendChild(spaceSpan);
+                    segCharSpans.push(spaceSpan);
+                  }
+                  pendingSpaceSpan = spaceWrapper;
+                } else {
+                  if (pendingSpaceSpan) {
+                    textContainer.appendChild(pendingSpaceSpan);
+                    pendingSpaceSpan = null;
+                  }
+                  const wordGroup = document.createElement('span');
+                  wordGroup.className = 'word-punct-group';
+
+                  for (const ch of sub) {
+                    const charSpan = document.createElement('span');
+                    charSpan.className = 'char';
+                    charSpan.textContent = ch;
+                    wordGroup.appendChild(charSpan);
+                    segCharSpans.push(charSpan);
+                  }
+
+                  textContainer.appendChild(wordGroup);
+                  lastWordGroup = wordGroup;
+                }
+              });
+
+              totalTextChars += segCharSpans.length;
+              rawSegments.push({
+                type: 'text',
+                charSpans: segCharSpans,
+                lastHighlightedCount: -1
+              });
+            }
+          });
+
+          if (pendingSpaceSpan) {
+            textContainer.appendChild(pendingSpaceSpan);
+            pendingSpaceSpan = null;
+          }
+
+          if (hasNewParagraphPause && rawNewParagraphDur > 0) {
+            const paraMeta = {
+              key: 'newParagraph',
+              display: '¶',
+              label: PAUSE_LABELS.newParagraph,
+              duration: rawNewParagraphDur,
+              isDash: false
+            };
+            const { badgeEl, fillEl } = createPauseBadgeElement(paraMeta, 'is-paragraph-token');
+            if (lastWordGroup) {
+              lastWordGroup.appendChild(badgeEl);
+            } else {
+              textContainer.appendChild(badgeEl);
+            }
+
+            rawSegments.push({
+              type: 'pause',
+              isParagraphPause: true,
+              configuredDuration: rawNewParagraphDur,
+              badgeEl,
+              fillEl,
+              lastState: ''
+            });
+          }
+
+          const pauseScale = typeof line.basePauseScale === 'number' ? line.basePauseScale : 1;
+          const totalConfiguredPauseSec = rawSegments
+            .filter((s) => s.type === 'pause')
+            .reduce((acc, s) => acc + s.configuredDuration, 0);
+          const effectiveTotalPauseSec = totalConfiguredPauseSec * pauseScale;
+          const netTextDuration = Math.max(0.08, duration - effectiveTotalPauseSec);
+
+          let segCursor = localStart;
+          const segments = rawSegments.map((seg, sIdx) => {
+            let segDur = 0;
+            if (seg.type === 'pause') {
+              segDur = seg.configuredDuration * pauseScale;
+            } else {
+              const charWeight = totalTextChars > 0
+                ? (seg.charSpans.length / totalTextChars)
+                : 0;
+              segDur = netTextDuration * charWeight;
+            }
+            const segStart = segCursor;
+            const segEnd = (sIdx === rawSegments.length - 1) ? localEnd : (segCursor + segDur);
+            segCursor = segEnd;
+            return {
+              ...seg,
+              start: segStart,
+              end: segEnd,
+              duration: Math.max(0.05, segEnd - segStart)
+            };
+          });
+
+          const inlinePunctCount = analysis.tokens.filter((t) => t.type === 'pause').length;
+          if (inlinePunctCount > 0) {
+            const punctPill = document.createElement('span');
+            punctPill.className = 'w-full text-center font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-950/75 text-amber-300/90 border border-slate-800/90';
+            const detailList = analysis.tokens
+              .filter((t) => t.type === 'pause')
+              .map((t) => `${t.meta.display} (${t.meta.duration.toFixed(2)}s)`)
+              .join(', ');
+            punctPill.title = `${inlinePunctCount} pause${inlinePunctCount > 1 ? 's' : ''} de ponctuation (durée fixe) : ${detailList}`;
+            punctPill.textContent = `⏸ ${(analysis.totalPauseDuration * pauseScale).toFixed(2)}s`;
+            timeCol.appendChild(punctPill);
+          }
+
+          let paragraphPill = null;
+          const paragraphSeg = segments.find((s) => s.isParagraphPause);
+          if (paragraphSeg) {
+            paragraphPill = document.createElement('span');
+            paragraphPill.className = 'w-full text-center font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/35 transition-colors';
+            paragraphPill.title = `Pause nouveau paragraphe (fixe) : ${paragraphSeg.duration.toFixed(2).replace('.', ',')} s`;
+            paragraphPill.textContent = `¶ ${paragraphSeg.duration.toFixed(2)}s`;
+            timeCol.appendChild(paragraphPill);
+          }
+
+          card.appendChild(timeCol);
+          card.appendChild(textContainer);
+
+          card.addEventListener('click', () => {
+            state.slideElapsed = localStart;
+            state.lastCenteredLineIdx = -1;
+            updateVisualFrame();
+            broadcastSlideState('SYNC_STATE');
+            showToast(`Lecture calée sur ${formatMMSS(line.start)}`);
+          });
+
+          dom.bulletsContainer.appendChild(card);
+
+          state.renderedLines.push({
+            element: card,
+            isPause: false,
+            localStart,
+            localEnd,
+            duration,
+            paragraphPill,
+            paragraphSeg,
+            segments
+          });
+        }
+      });
+
+      state.subtitleCues = buildSlideSubtitleCues(state.renderedLines);
+      state.lastBroadcastSubtitle = null;
+
+      updateVisualFrame();
+    }
+
+    /**
+     * MISE À JOUR VISUELLE HAUTE FRÉQUENCE (60 FPS)
+     */
+    function updateVisualFrame() {
+      const slide = SLIDES_DATA[state.currentSlideIndex];
+      const slideDuration = slide.globalEnd - slide.globalStart;
+      const totalPresentationSeconds = getTotalPresentationSeconds();
+
+      // 1. Chronomètre global
+      dom.globalTimerDisplay.textContent = formatMMSS(state.globalElapsed);
+      const globalPct = Math.min(100, (state.globalElapsed / totalPresentationSeconds) * 100);
+      dom.globalPercent.textContent = `${Math.round(globalPct)}%`;
+      dom.globalProgressBar.style.width = `${globalPct}%`;
+
+      if (state.globalElapsed > totalPresentationSeconds) {
+        dom.globalTimerDisplay.classList.remove('text-white');
+        dom.globalTimerDisplay.classList.add('text-rose-400');
+      } else {
+        dom.globalTimerDisplay.classList.add('text-white');
+        dom.globalTimerDisplay.classList.remove('text-rose-400');
+      }
+
+      // 2. Chronomètre de la slide en cours
+      dom.slideTimerDisplay.textContent = formatMMSS(state.slideElapsed);
+      const slidePct = Math.min(100, (state.slideElapsed / slideDuration) * 100);
+      dom.slidePercent.textContent = `${Math.round(slidePct)}%`;
+      dom.slideProgressBar.style.width = `${slidePct}%`;
+
+      if (state.slideElapsed > slideDuration) {
+        dom.slideTimerDisplay.classList.remove('text-sky-300');
+        dom.slideTimerDisplay.classList.add('text-amber-400');
+        dom.slideTimerBox.classList.add('border-amber-500/50');
+        dom.btnFooterNext.classList.add('pulse-next');
+      } else {
+        dom.slideTimerDisplay.classList.add('text-sky-300');
+        dom.slideTimerDisplay.classList.remove('text-amber-400');
+        dom.slideTimerBox.classList.remove('border-amber-500/50');
+        dom.btnFooterNext.classList.remove('pulse-next');
+      }
+
+      // 3. Indicateur Avance / Retard
+      const expectedGlobalTime = slide.globalStart + state.slideElapsed;
+      const deltaSeconds = expectedGlobalTime - state.globalElapsed;
+      const roundedDelta = Math.round(deltaSeconds);
+
+      dom.deltaValue.textContent = formatSignedDelta(deltaSeconds);
+      if (roundedDelta > 1) {
+        dom.deltaValue.className = 'font-mono text-xl sm:text-2xl font-extrabold text-emerald-400';
+        dom.deltaStatusText.className = 'text-[11px] font-semibold text-emerald-400 mt-0.5';
+        dom.deltaStatusText.textContent = 'En avance';
+        dom.deltaBox.className = 'bg-emerald-950/30 border border-emerald-500/40 rounded-xl px-3 py-1.5 flex flex-col justify-center min-w-[138px] sm:min-w-[158px] transition-colors';
+      } else if (roundedDelta < -1) {
+        const isCriticalDelay = roundedDelta <= -15;
+        dom.deltaValue.className = `font-mono text-xl sm:text-2xl font-extrabold ${isCriticalDelay ? 'text-rose-400' : 'text-amber-400'}`;
+        dom.deltaStatusText.className = `text-[11px] font-semibold ${isCriticalDelay ? 'text-rose-400' : 'text-amber-400'} mt-0.5`;
+        dom.deltaStatusText.textContent = 'En retard';
+        dom.deltaBox.className = `${isCriticalDelay ? 'bg-rose-950/35 border-rose-500/50' : 'bg-amber-950/30 border-amber-500/40'} rounded-xl px-3 py-1.5 flex flex-col justify-center min-w-[138px] sm:min-w-[158px] transition-colors`;
+      } else {
+        dom.deltaValue.className = 'font-mono text-xl sm:text-2xl font-extrabold text-sky-400';
+        dom.deltaStatusText.className = 'text-[11px] font-semibold text-sky-400 mt-0.5';
+        dom.deltaStatusText.textContent = 'Dans le rythme';
+        dom.deltaBox.className = 'bg-slate-900/95 border border-slate-800 rounded-xl px-3 py-1.5 flex flex-col justify-center min-w-[138px] sm:min-w-[158px] transition-colors';
+      }
+
+      // 4. Mise à jour des lignes, pauses dynamiques et coloration caractère par caractère
+      let activeLineIndex = -1;
+
+      state.renderedLines.forEach((item, idx) => {
+        const isBefore = state.slideElapsed < item.localStart;
+        const isAfter = state.slideElapsed >= item.localEnd;
+        const isCurrent = !isBefore && !isAfter;
+
+        if (isCurrent) {
+          activeLineIndex = idx;
+        }
+
+        if (item.isPause) {
+          if (isCurrent) {
+            item.element.classList.add('is-active');
+            const progress = Math.min(1, Math.max(0, (state.slideElapsed - item.localStart) / item.duration));
+            const remaining = Math.max(0, item.localEnd - state.slideElapsed);
+            item.gaugeFill.style.width = `${(progress * 100).toFixed(1)}%`;
+            item.countdownBadge.textContent = `${remaining.toFixed(1)}s`;
+          } else if (isAfter) {
+            item.element.classList.remove('is-active');
+            item.gaugeFill.style.width = '100%';
+            item.countdownBadge.textContent = '0.0s';
+          } else {
+            item.element.classList.remove('is-active');
+            item.gaugeFill.style.width = '0%';
+            item.countdownBadge.textContent = `${item.duration.toFixed(1)}s`;
+          }
+          return;
+        }
+
+        item.element.classList.toggle('is-active', isCurrent);
+        item.element.classList.toggle('is-past', isAfter);
+
+        if (item.paragraphPill && item.paragraphSeg) {
+          const pSeg = item.paragraphSeg;
+          const inParaPause = isCurrent && state.slideElapsed >= pSeg.start && state.slideElapsed < pSeg.end;
+          const afterParaPause = isAfter || (isCurrent && state.slideElapsed >= pSeg.end);
+          if (inParaPause) {
+            const rem = Math.max(0, pSeg.end - state.slideElapsed);
+            item.paragraphPill.className = 'w-full text-center font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-400/20 text-amber-300 border border-amber-400/50 transition-colors';
+            item.paragraphPill.textContent = `¶ ${rem.toFixed(2)}s`;
+          } else if (afterParaPause) {
+            item.paragraphPill.className = 'w-full text-center font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-slate-950/60 text-slate-500 border border-slate-800/70 transition-colors';
+            item.paragraphPill.textContent = `✓ ${pSeg.duration.toFixed(2)}s`;
+          } else {
+            item.paragraphPill.className = 'w-full text-center font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/35 transition-colors';
+            item.paragraphPill.textContent = `¶ ${pSeg.duration.toFixed(2)}s`;
+          }
+        }
+
+        item.segments.forEach((seg) => {
+          const segBefore = state.slideElapsed < seg.start;
+          const segAfter = state.slideElapsed >= seg.end || isAfter;
+          const segActive = !segBefore && !segAfter && isCurrent;
+
+          if (seg.type === 'pause') {
+            const extraCls = seg.isParagraphPause
+              ? 'is-paragraph-token'
+              : (seg.badgeEl.classList.contains('is-dash-token') ? 'is-dash-token' : '');
+
+            if (segActive) {
+              const pRatio = Math.min(1, Math.max(0, (state.slideElapsed - seg.start) / seg.duration));
+              if (seg.lastState !== 'active') {
+                seg.badgeEl.className = `inline-pause-token ${extraCls} is-active`.replace(/\s+/g, ' ').trim();
+                seg.lastState = 'active';
+              }
+              seg.fillEl.style.width = `${(pRatio * 100).toFixed(1)}%`;
+            } else if (segAfter) {
+              if (seg.lastState !== 'read') {
+                seg.badgeEl.className = `inline-pause-token ${extraCls} is-read`.replace(/\s+/g, ' ').trim();
+                seg.fillEl.style.width = '100%';
+                seg.lastState = 'read';
+              }
+            } else {
+              if (seg.lastState !== 'unread') {
+                seg.badgeEl.className = `inline-pause-token ${extraCls}`.replace(/\s+/g, ' ').trim();
+                seg.fillEl.style.width = '0%';
+                seg.lastState = 'unread';
+              }
+            }
+            return;
+          }
+
+          const totalChars = seg.charSpans.length;
+          let highlightedCount = 0;
+
+          if (segAfter) {
+            highlightedCount = totalChars;
+          } else if (segActive) {
+            const ratio = Math.min(1, Math.max(0, (state.slideElapsed - seg.start) / seg.duration));
+            highlightedCount = Math.floor(ratio * totalChars);
+          } else {
+            highlightedCount = 0;
+          }
+
+          if (highlightedCount !== seg.lastHighlightedCount) {
+            for (let c = 0; c < totalChars; c++) {
+              const span = seg.charSpans[c];
+              if (segActive && c === highlightedCount) {
+                span.className = 'char active';
+              } else if (segActive && c >= highlightedCount - 2 && c < highlightedCount) {
+                span.className = 'char trail';
+              } else if (c < highlightedCount) {
+                span.className = 'char read';
+              } else {
+                span.className = 'char';
+              }
+            }
+            seg.lastHighlightedCount = highlightedCount;
+          }
+        });
+      });
+
+      // 5. Diffusion immédiate si la phrase active a changé
+      const currentSub = getActiveSubtitleText();
+      if (currentSub !== state.lastBroadcastSubtitle) {
+        broadcastSlideState('SUBTITLE_UPDATE');
+      }
+
+      if (activeLineIndex === -1 && state.slideElapsed >= slideDuration && state.renderedLines.length > 0) {
+        activeLineIndex = state.renderedLines.length - 1;
+      }
+
+      if (activeLineIndex !== -1 && activeLineIndex !== state.lastCenteredLineIdx) {
+        state.lastCenteredLineIdx = activeLineIndex;
+        const targetEl = state.renderedLines[activeLineIndex].element;
+        scrollElementToVisibleCenter(targetEl);
+      }
+    }
+
+    /**
+     * BOUCLE D'ANIMATION PRINCIPALE (requestAnimationFrame)
+     */
+    let lastHeartbeatSentAt = 0;
+
+    function animationLoop(now) {
+      if (state.isRunning) {
+        if (state.lastFrameTime !== null) {
+          const realDt = (now - state.lastFrameTime) / 1000;
+          state.globalElapsed += realDt;
+          state.slideElapsed += realDt;
+        }
+        state.lastFrameTime = now;
+        updateVisualFrame();
+      } else {
+        state.lastFrameTime = null;
+      }
+
+      if (now - lastHeartbeatSentAt >= 1000) {
+        lastHeartbeatSentAt = now;
+        broadcastSlideState('TIMER_TICK');
+      }
+
+      requestAnimationFrame(animationLoop);
+    }
+
+    window.addEventListener('beforeunload', () => {
+      broadcastSlideState('PROMPTER_CLOSED');
+    });
+
+    /**
+     * ACTIONS DE CONTRÔLE (LECTURE, PAUSE, NAVIGATION SLIDES & SYNCHRO ECRAN)
+     */
+    function startTimer() {
+      if (!state.isRunning) {
+        state.isRunning = true;
+        state.lastFrameTime = performance.now();
+        updatePlayPauseButtonUI();
+        broadcastSlideState('SYNC_STATE');
+      }
+    }
+
+    function pauseTimer() {
+      if (state.isRunning) {
+        state.isRunning = false;
+        state.lastFrameTime = null;
+        updatePlayPauseButtonUI();
+        broadcastSlideState('SYNC_STATE');
+      }
+    }
+
+    function togglePlayPause() {
+      if (state.isRunning) {
+        pauseTimer();
+        showToast('Prompteur en pause');
+      } else {
+        startTimer();
+        showToast('Lecture en cours');
+      }
+    }
+
+    function updatePlayPauseButtonUI() {
+      if (state.isRunning) {
+        dom.iconPlay.classList.add('hidden');
+        dom.iconPause.classList.remove('hidden');
+        dom.playPauseText.textContent = 'Pause';
+        dom.btnPlayPause.classList.remove('bg-emerald-500', 'hover:bg-emerald-400', 'shadow-emerald-500/20');
+        dom.btnPlayPause.classList.add('bg-amber-400', 'hover:bg-amber-300', 'shadow-amber-400/20');
+      } else {
+        dom.iconPlay.classList.remove('hidden');
+        dom.iconPause.classList.add('hidden');
+        dom.playPauseText.textContent = 'Démarrer';
+        dom.btnPlayPause.classList.add('bg-emerald-500', 'hover:bg-emerald-400', 'shadow-emerald-500/20');
+        dom.btnPlayPause.classList.remove('bg-amber-400', 'hover:bg-amber-300', 'shadow-amber-400/20');
+      }
+    }
+
+    function goToNextSlide() {
+      const wasStopped = !state.isRunning;
+
+      if (state.currentSlideIndex < SLIDES_DATA.length - 1) {
+        state.currentSlideIndex += 1;
+        state.slideElapsed = 0;
+        if (wasStopped) {
+          startTimer();
+        }
+        renderSlide(state.currentSlideIndex);
+        broadcastSlideState('SLIDE_CHANGE');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        showToast(`Slide ${state.currentSlideIndex + 1} / ${SLIDES_DATA.length} affichée`);
+      } else {
+        if (wasStopped) {
+          startTimer();
+        }
+        broadcastSlideState('SLIDE_CHANGE');
+        showToast(`Dernière slide atteinte (Slide ${SLIDES_DATA.length} / ${SLIDES_DATA.length})`);
+      }
+    }
+
+    function goToPrevSlide() {
+      if (state.currentSlideIndex > 0) {
+        state.currentSlideIndex -= 1;
+        state.slideElapsed = 0;
+        renderSlide(state.currentSlideIndex);
+        broadcastSlideState('SLIDE_CHANGE');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        showToast(`Retour Slide ${state.currentSlideIndex + 1} / ${SLIDES_DATA.length}`);
+      } else {
+        state.slideElapsed = 0;
+        updateVisualFrame();
+        broadcastSlideState('SLIDE_CHANGE');
+        showToast('Début de la Slide 1');
+      }
+    }
+
+    function jumpToSlide(targetIndex) {
+      const idx = Math.max(0, Math.min(SLIDES_DATA.length - 1, Number(targetIndex)));
+      state.currentSlideIndex = idx;
+      state.slideElapsed = 0;
+      state.globalElapsed = SLIDES_DATA[idx].globalStart;
+      renderSlide(idx);
+      broadcastSlideState('SLIDE_CHANGE');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast(`Accès direct : Slide ${idx + 1} (${formatMMSS(SLIDES_DATA[idx].globalStart)})`);
+    }
+
+    function resetPrompter() {
+      pauseTimer();
+      state.currentSlideIndex = 0;
+      state.globalElapsed = 0;
+      state.slideElapsed = 0;
+      renderSlide(0);
+      broadcastSlideState('SLIDE_CHANGE');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast('Prompteur & écran casté réinitialisés sur Slide 1');
+    }
+
+    function changeFontSize(delta) {
+      state.fontSize = Math.max(22, Math.min(56, state.fontSize + delta));
+      dom.fontSizeLabel.textContent = `${state.fontSize}px`;
+      document.querySelectorAll('.teleprompter-text').forEach((el) => {
+        el.style.fontSize = `${state.fontSize}px`;
+      });
+    }
+
+    function changePlaybackSpeed(delta) {
+      const next = Math.round((state.playbackSpeed + delta) * 100) / 100;
+      const clamped = Math.max(MIN_PLAYBACK_SPEED, Math.min(MAX_PLAYBACK_SPEED, next));
+      if (clamped === state.playbackSpeed) return;
+
+      let activeLineIdx = -1;
+      let activeSegIdx = -1;
+      let activeSegProgress = 0;
+
+      for (let i = 0; i < state.renderedLines.length; i++) {
+        const item = state.renderedLines[i];
+        if (state.slideElapsed >= item.localStart && state.slideElapsed <= item.localEnd) {
+          activeLineIdx = i;
+          if (!item.isPause && item.segments) {
+            for (let s = 0; s < item.segments.length; s++) {
+              const seg = item.segments[s];
+              if (state.slideElapsed >= seg.start && state.slideElapsed <= seg.end) {
+                activeSegIdx = s;
+                activeSegProgress = Math.min(1, Math.max(0, (state.slideElapsed - seg.start) / seg.duration));
+                break;
+              }
+            }
+          } else {
+            activeSegProgress = Math.min(1, Math.max(0, (state.slideElapsed - item.localStart) / item.duration));
+          }
+          break;
+        }
+      }
+
+      const oldSlide = SLIDES_DATA[state.currentSlideIndex];
+      const oldSlideDur = Math.max(0.1, oldSlide.globalEnd - oldSlide.globalStart);
+      const fallbackRatio = Math.min(1, Math.max(0, state.slideElapsed / oldSlideDur));
+
+      state.playbackSpeed = clamped;
+      dom.speedLabel.textContent = `${state.playbackSpeed.toFixed(2)}x`;
+
+      recomputeSlidesForPlaybackSpeed(state.playbackSpeed);
+      populateSlideSelector();
+      renderSlide(state.currentSlideIndex);
+
+      const newSlide = SLIDES_DATA[state.currentSlideIndex];
+      const newSlideDur = newSlide.globalEnd - newSlide.globalStart;
+      if (activeLineIdx !== -1 && state.renderedLines[activeLineIdx]) {
+        const newItem = state.renderedLines[activeLineIdx];
+        if (!newItem.isPause && activeSegIdx !== -1 && newItem.segments && newItem.segments[activeSegIdx]) {
+          const newSeg = newItem.segments[activeSegIdx];
+          state.slideElapsed = newSeg.start + activeSegProgress * newSeg.duration;
+        } else {
+          state.slideElapsed = newItem.localStart + activeSegProgress * newItem.duration;
+        }
+      } else {
+        state.slideElapsed = fallbackRatio * newSlideDur;
+      }
+
+      updateVisualFrame();
+      broadcastSlideState('SYNC_STATE');
+      showToast(`Vitesse : ${state.playbackSpeed.toFixed(2)}x — Durée totale : ${formatMMSS(getTotalPresentationSeconds())}`);
+    }
+
+    /**
+     * ÉCOUTEURS D'ÉVÉNEMENTS SOURIS, FICHIER .TXT & CLAVIER
+     */
+    dom.btnPlayPause.addEventListener('click', togglePlayPause);
+    dom.btnPrevSlide.addEventListener('click', goToPrevSlide);
+    dom.btnNextSlide.addEventListener('click', goToNextSlide);
+    dom.btnFooterNext.addEventListener('click', goToNextSlide);
+    dom.btnReset.addEventListener('click', resetPrompter);
+    dom.btnOpenJuryScreen.addEventListener('click', openJuryScreenWindow);
+    dom.btnToggleSubtitles.addEventListener('click', togglePrompterSubtitles);
+
+    dom.slideSelector.addEventListener('change', (e) => {
+      jumpToSlide(e.target.value);
+      e.target.blur();
+    });
+
+    dom.btnExportTxt.addEventListener('click', exportFormattedScriptWithTimestamps);
+
+    dom.txtFileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        applyCustomScript(String(ev.target.result || ''), file.name, false);
+      };
+      reader.readAsText(file, 'UTF-8');
+      e.target.value = '';
+    });
+
+    let dragCounter = 0;
+    window.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      dragCounter += 1;
+      dom.dropOverlay.classList.remove('opacity-0');
+      dom.dropOverlay.classList.add('opacity-100');
+    });
+    window.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dragCounter = Math.max(0, dragCounter - 1);
+      if (dragCounter === 0) {
+        dom.dropOverlay.classList.add('opacity-0');
+        dom.dropOverlay.classList.remove('opacity-100');
+      }
+    });
+    window.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+    window.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      dom.dropOverlay.classList.add('opacity-0');
+      dom.dropOverlay.classList.remove('opacity-100');
+      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        applyCustomScript(String(ev.target.result || ''), file.name, false);
+      };
+      reader.readAsText(file, 'UTF-8');
+    });
+
+    dom.btnFontDec.addEventListener('click', () => changeFontSize(-2));
+    dom.btnFontInc.addEventListener('click', () => changeFontSize(2));
+
+    dom.btnSpeedDec.addEventListener('click', () => changePlaybackSpeed(-0.05));
+    dom.btnSpeedInc.addEventListener('click', () => changePlaybackSpeed(0.05));
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (document.activeElement && typeof document.activeElement.blur === 'function') {
+          document.activeElement.blur();
+        }
+        togglePlayPause();
+        return;
+      }
+
+      if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        goToNextSlide();
+        return;
+      }
+
+      if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        goToPrevSlide();
+        return;
+      }
+
+      if (e.code === 'KeyP' || e.code === 'Enter') {
+        if (document.activeElement === dom.slideSelector) return;
+        e.preventDefault();
+        togglePlayPause();
+        return;
+      }
+
+      if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        resetPrompter();
+        return;
+      }
+
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        changeFontSize(2);
+        return;
+      }
+      if (e.key === '-') {
+        e.preventDefault();
+        changeFontSize(-2);
+      }
+    }, true);
+
+    /**
+     * INITIALISATION AU CHARGEMENT DE LA PAGE
+     */
+    window.addEventListener('resize', syncTopBarOffset);
+
+    window.onload = async function () {
+      loadPrompterSubtitleState();
+      syncTopBarOffset();
+      if (typeof ResizeObserver !== 'undefined' && dom.topBar) {
+        const ro = new ResizeObserver(syncTopBarOffset);
+        ro.observe(dom.topBar);
+      }
+      recomputeSlidesForPlaybackSpeed(state.playbackSpeed);
+      populateSlideSelector();
+      renderSlide(0);
+      await tryAutoLoadScriptTxt();
+      broadcastSlideState('SYNC_STATE');
+      requestAnimationFrame(animationLoop);
+    };
+  </script>
+</body>
+</html>
