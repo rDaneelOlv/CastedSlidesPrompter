@@ -1,0 +1,32 @@
+=== SLIDE 1 | 00:00 - 01:05 | PARTIE 1 : INTRODUCTION | NAVIGUER DANS L'INCERTITUDE ===
+Bienvenue à tous depuis le fichier ! Aujourd'hui, nous abordons un sujet capital pour toute organisation : la gestion stratégique des risques...
+Comment naviguer sereinement dans un monde imprévisible ? Contrairement aux idées reçues, gérer le risque ne signifie pas vivre dans la peur ; il s'agit d'anticipation : anticiper l'incertain pour transformer des menaces potentielles en véritables opportunités stratégiques !
+Notre démarche s'articule autour de trois piliers fondamentaux : d'abord, protéger les actifs de l'entreprise — qu'ils soient physiques, financiers ou humains ; ensuite, optimiser la prise de décision en réduisant l'incertitude stratégique ; et enfin, stimuler la croissance en sachant détecter les opportunités émergentes nées de la perturbation !
+
+=== SLIDE 2 | 01:05 - 02:29 | PARTIE 2 : FONDEMENTS | L'ÉQUATION DU RISQUE ET SES LEVIERS ===
+Pour bien décider, il faut d'abord comprendre l'anatomie même du risque !
+Regardons l'équation fondamentale : le risque naît de la rencontre entre une imprévisibilité et un préjudice potentiel.
+Mais d'où viennent ces périls ? Ils peuvent être endogènes –  c'est-à-dire issus de nos processus internes ou de notre propre culture organisationnelle ; ou exogènes, dictés par l'économie, le climat ou les ruptures technologiques !
+Face à cela, deux leviers majeurs s'offrent à nous...
+Le premier, c'est la prévention : son objectif est d'agir sur la fréquence, pour éviter ou diminuer la probabilité d'occurrence du risque ; comme le geste simple de se laver les mains pour stopper une épidémie.
+Le second levier, c'est la précaution : ici, on agit sur la gravité pour atténuer l'impact si l'événement survient !
+Pensez au port de la ceinture de sécurité en voiture, ou à la diversification d'un portefeuille d'actifs financiers.
+
+=== SLIDE 3 | 02:29 - 03:45 | PARTIE 3 : GOUVERNANCE | LE PROCESSUS DE TOLÉRANCE AUX RISQUES ===
+Comment fixer nos limites sans paralyser l'entreprise ?
+C'est tout l'enjeu de la tolérance aux risques ! Le processus commence par la définition claire de nos objectifs et contraintes stratégiques ; puis vient la cartographie précise des périls financiers, opérationnels et réputationnels.
+Ensuite, nous évaluons notre appétence pour formaliser des seuils d'alerte et des critères d'action immédiate. Observez cette jauge de tolérance : à la base se trouve notre capacité — c'est-à-dire la prise de risque minimale liée aux rendements de base ; vient ensuite l'appétence cible, cette zone idéale où le risque est accepté et optimisé pour stimuler la croissance !
+Mais attention : si nous franchissons le seuil de tolérance, nous entrons en zone d'alerte exigeant une action corrective ; au-delà se dresse le danger critique, dont les conséquences deviennent inacceptables pour la survie de l'organisation !
+
+=== SLIDE 4 | 03:45 - 04:51 | PARTIE 4 : CULTURE | LA CULTURE DU RISQUE COMME LEVIER STRATÉGIQUE ===
+Aucun outil, aucun ratio ne peut protéger une entreprise si la culture humaine ne suit pas !
+Face aux résistances au changement et au mur des habitudes, la culture du risque constitue notre levier le plus puissant.
+Dans un environnement VUCA — Volatile, Incertain, Complexe et Ambigu —, nous devons développer une véritable résilience collective pour absorber les chocs et rebondir !
+Et cette culture repose sur quatre piliers indissociables : la transparence d'abord, en instaurant le zéro tabou où le risque n'est pas vu comme un échec mais comme une information vitale ; l'incitation ensuite, pour récompenser la remontée d'alertes du terrain ; l'exemplarité du top management, qui alloue visiblement les ressources ; et enfin la sécurité psychologique qui libère la parole !
+
+=== SLIDE 5 | 04:51 - 06:14 | PARTIE 5 : CADRE DU PILOTAGE | LE RÉFÉRENTIEL COSO 2 ET L'APPROCHE INTÉGRÉE ===
+Pour structurer cette vision au quotidien, nous nous appuyons sur le référentiel international COSO 2 ! Ce cadre d'approche intégrée fait le pont entre l'abstraction du risque et le pilotage concret de l'entreprise.
+Il déploie huit composantes interconnectées : d'abord le socle de l'environnement interne et de la gouvernance ; suivis de la fixation des objectifs stratégiques et de l'identification des événements qui sépare les menaces des opportunités.
+Viennent ensuite l'évaluation des risques en probabilité et impact, puis le traitement — qu'il s'agisse d'éviter, de réduire, de transférer ou d'accepter le risque !
+Enfin, les activités de contrôle, la fluidité de l'information et de la communication, ainsi que le pilotage continu garantissent la surveillance et l'amélioration du système.
+Le COSO 2 nous le prouve : le contrôle interne ne cherche pas un impossible « risque zéro », mais construit une résilience organisationnelle dynamique où chaque acteur connaît son rôle !
